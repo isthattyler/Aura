@@ -134,7 +134,8 @@ impl ScanOrchestrator {
 // Shared scan helpers
 // ─────────────────────────────────────────
 
-/// Walk a directory and collect all files, logging permission errors
+/// Walk a directory and collect all files, logging permission errors.
+/// Only returns files (not directories) — use `collect_trash_entries` for trash scanning.
 pub fn walk_collect(root: &std::path::Path) -> Vec<std::path::PathBuf> {
     let mut results = Vec::new();
     for entry in walkdir::WalkDir::new(root).follow_links(false) {
@@ -154,6 +155,35 @@ pub fn walk_collect(root: &std::path::Path) -> Vec<std::path::PathBuf> {
 /// Get file size, returns 0 on error
 pub fn file_size(path: &std::path::Path) -> u64 {
     std::fs::metadata(path).map(|m| m.len()).unwrap_or(0)
+}
+
+/// Calculate the total size of a file or directory.
+/// For files, returns the file size. For directories, recursively sums all file sizes.
+pub fn total_size(path: &std::path::Path) -> u64 {
+    if path.is_dir() {
+        walkdir::WalkDir::new(path)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().is_file())
+            .filter_map(|e| e.metadata().ok())
+            .map(|m| m.len())
+            .sum()
+    } else {
+        std::fs::metadata(path).map(|m| m.len()).unwrap_or(0)
+    }
+}
+
+/// Collect top-level trash entries (both files and directories) with their total sizes.
+/// Returns pairs of (path, total_size_in_bytes).
+pub fn collect_trash_entries(root: &std::path::Path) -> Vec<(std::path::PathBuf, u64)> {
+    let mut entries = Vec::new();
+    let Ok(read) = std::fs::read_dir(root) else { return entries };
+    for entry in read.flatten() {
+        let path = entry.path();
+        let size = total_size(&path);
+        entries.push((path, size));
+    }
+    entries
 }
 
 /// Format a path for display, replacing home dir with ~
