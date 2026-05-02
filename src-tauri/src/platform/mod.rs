@@ -3,6 +3,7 @@ use crate::error::AppError;
 use crate::models::StartupItem;
 
 pub mod macos;
+pub mod macos_startup;
 pub mod windows;
 pub mod linux;
 

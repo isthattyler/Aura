@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use crate::error::AppError;
 use crate::models::StartupItem;
 use super::PlatformPaths;
+use super::macos_startup;
 
 pub struct MacOsPlatform;
 
@@ -99,27 +100,7 @@ impl PlatformPaths for MacOsPlatform {
     }
 
     fn startup_entries(&self) -> Result<Vec<StartupItem>, AppError> {
-        let mut items = Vec::new();
-        if let Some(home) = dirs::home_dir() {
-            // User LaunchAgents
-            let user_agents = home.join("Library/LaunchAgents");
-            collect_plist_entries(&user_agents, "launchd_agent", &mut items);
-
-            // System LaunchAgents (read-only)
-            collect_plist_entries(
-                &PathBuf::from("/Library/LaunchAgents"),
-                "launchd_agent",
-                &mut items,
-            );
-
-            // System LaunchDaemons
-            collect_plist_entries(
-                &PathBuf::from("/Library/LaunchDaemons"),
-                "launchd_daemon",
-                &mut items,
-            );
-        }
-        Ok(items)
+        macos_startup::collect_startup_items()
     }
 
     fn protected_paths(&self) -> Vec<PathBuf> {
@@ -149,33 +130,5 @@ impl PlatformPaths for MacOsPlatform {
             paths.push(home.join("Library/Application Support/com.apple.sharedfilelist"));
         }
         paths
-    }
-}
-
-// ─────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────
-
-fn collect_plist_entries(dir: &PathBuf, entry_type: &str, items: &mut Vec<StartupItem>) {
-    if !dir.exists() { return; }
-    let Ok(read) = std::fs::read_dir(dir) else { return };
-    for entry in read.flatten() {
-        let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) == Some("plist") {
-            let name = path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("Unknown")
-                .to_string();
-            items.push(StartupItem {
-                id: uuid::Uuid::new_v4().to_string(),
-                name: name.clone(),
-                path: path.to_string_lossy().to_string(),
-                startup_type: entry_type.to_string(),
-                enabled: true, // TODO: parse plist Disabled key
-                publisher: None,
-                description: None,
-            });
-        }
     }
 }

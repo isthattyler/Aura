@@ -134,7 +134,10 @@ export type StartupType =
   | "registry_run"     // Windows: HKCU/HKLM Run
   | "scheduled_task"   // Windows: Task Scheduler
   | "systemd_user"     // Linux: systemd user units
-  | "xdg_autostart";   // Linux: XDG autostart
+  | "xdg_autostart"    // Linux: XDG autostart
+  | "btm_app"          // macOS: BTM-registered app
+  | "btm_daemon"       // macOS: BTM-registered daemon
+  | "btm_developer";   // macOS: BTM-registered developer tool
 
 export interface StartupItem {
   id: string;
