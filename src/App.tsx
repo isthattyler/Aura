@@ -7,6 +7,7 @@ import Sidebar from "@/components/layout/Sidebar";
 import TopBar from "@/components/layout/TopBar";
 import ToastContainer from "@/components/ui/Toast";
 import ActionSheet from "@/components/ui/ActionSheet";
+import ErrorBoundary from "@/components/ui/ErrorBoundary";
 import Spinner from "@/components/ui/Spinner";
 import OnboardingOverlay from "@/components/OnboardingOverlay";
 
@@ -48,9 +49,11 @@ function ActivePage() {
   };
   return (
     <Suspense fallback={<PageFallback />}>
-      <div key={currentPage} className="animate-fade-up h-full">
-        {pages[currentPage]}
-      </div>
+      <ErrorBoundary>
+        <div key={currentPage} className="animate-fade-up h-full">
+          {pages[currentPage]}
+        </div>
+      </ErrorBoundary>
     </Suspense>
   );
 }

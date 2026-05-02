@@ -23,6 +23,7 @@ export default function StartupManager() {
       setLoaded(true);
     } catch (e) {
       addToast({ type: "error", title: "Failed to load startup items", description: String(e) });
+      setLoaded(true);
     } finally {
       setLoading(false);
     }
@@ -136,7 +137,7 @@ function StartupRow({
           <div className="flex items-center gap-2">
             <span className="text-[12px] font-medium text-text-primary">{item.name}</span>
             <Badge variant={item.enabled ? "success" : "muted"}>
-              {item.type.replace(/_/g, " ")}
+              {item.type?.replace(/_/g, " ") ?? item.type ?? "unknown"}
             </Badge>
           </div>
           {item.path && (

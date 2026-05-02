@@ -200,6 +200,7 @@ pub struct StartupItem {
     pub id: String,
     pub name: String,
     pub path: String,
+    #[serde(rename = "type")]
     pub startup_type: String,
     pub enabled: bool,
     pub publisher: Option<String>,
