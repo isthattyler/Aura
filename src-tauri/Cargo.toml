@@ -1,0 +1,75 @@
+[package]
+name = "aura"
+version = "0.1.0"
+description = "Aura — Cross-platform system cleaner"
+authors = ["Aura Contributors"]
+license = "MIT"
+repository = "https://github.com/yourusername/aura"
+edition = "2021"
+
+[lib]
+name = "aura_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.0", features = [] }
+
+[dependencies]
+tauri = { version = "2.0", features = [] }
+tauri-plugin-shell = "2.0"
+tauri-plugin-updater = "2.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1.0"
+
+# Async
+tokio = { version = "1.38", features = ["full"] }
+async-trait = "0.1"
+
+# Filesystem
+walkdir = "2.5"
+dirs = "5.0"
+
+# Hashing (for duplicate detection)
+sha2 = "0.10"
+hex = "0.4"
+
+# System information
+sysinfo = "0.31"
+
+# Date/time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Regex (junk pattern matching)
+regex = "1.10"
+once_cell = "1.19"
+
+# Parallel processing
+rayon = "1.10"
+
+# UUID for item IDs
+uuid = { version = "1.10", features = ["v4"] }
+
+# Logging
+log = "0.4"
+
+# Error chaining
+anyhow = "1.0"
+
+# Plist parsing (macOS)
+plist = { version = "1.6", features = [] }
+
+# Platform-specific
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = "0.2"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+# Windows registry access for startup items
+winreg = "0.52"
+
+[profile.release]
+opt-level = "s"     # Optimize for size
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
