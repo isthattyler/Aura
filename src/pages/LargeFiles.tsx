@@ -6,6 +6,7 @@ import { type ScanItem, formatBytes, CATEGORY_COLORS } from "@/types";
 import { SizeLabel } from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import Spinner from "@/components/ui/Spinner";
+import PermissionDialog from "@/components/PermissionDialog";
 
 type SortKey = "size" | "name" | "accessed";
 
@@ -14,6 +15,7 @@ export default function LargeFiles() {
   const [items, setItems] = useState<ScanItem[]>([]);
   const [scanning, setScanning] = useState(false);
   const [scanned, setScanned] = useState(false);
+  const [showPermission, setShowPermission] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>("size");
   const [sortAsc, setSortAsc] = useState(false);
 
@@ -21,7 +23,20 @@ export default function LargeFiles() {
   const totalBytes = items.reduce((s, i) => s + i.sizeBytes, 0);
   const selectedCount = items.filter((i) => selectedItemIds.has(i.id)).length;
 
-  async function scan() {
+  async function handleScan() {
+    try {
+      const ok = await invoke<boolean>("check_permission");
+      if (!ok) {
+        setShowPermission(true);
+        return;
+      }
+    } catch {
+      // Permission check failed / not supported — proceed anyway
+    }
+    performScan();
+  }
+
+  async function performScan() {
     setScanning(true);
     setScanned(false);
     try {
@@ -100,7 +115,7 @@ export default function LargeFiles() {
               size="sm"
               icon={scanned ? RefreshCw : undefined}
               loading={scanning}
-              onClick={scan}
+              onClick={handleScan}
             >
               {scanned ? "Re-scan" : "Scan"}
             </Button>
@@ -109,13 +124,23 @@ export default function LargeFiles() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-6">
+        {showPermission && (
+          <PermissionDialog
+            onRetry={() => {
+              setShowPermission(false);
+              handleScan();
+            }}
+            onDismiss={() => setShowPermission(false)}
+          />
+        )}
+
         {!scanned && !scanning && (
           <div className="flex flex-col items-center justify-center h-full gap-3 text-center">
             <Files size={36} className="text-text-muted opacity-40" />
             <p className="text-[13px] text-text-muted">
               Find files over {settings.largeFileSizeThresholdMb} MB untouched for {settings.largeFileAgeThresholdDays}+ days
             </p>
-            <Button variant="primary" onClick={scan}>Start Scan</Button>
+            <Button variant="primary" onClick={handleScan}>Start Scan</Button>
           </div>
         )}
 

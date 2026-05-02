@@ -7,11 +7,26 @@ import { useScanCategory } from "@/hooks/useScan";
 import { Card, SizeLabel } from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import Spinner from "@/components/ui/Spinner";
+import PermissionDialog from "@/components/PermissionDialog";
 
 export default function TrashBins() {
   const { addToast } = useAppStore();
   const { items, scanning, scanned, scan } = useScanCategory("trash");
   const [emptying, setEmptying] = useState(false);
+  const [showPermission, setShowPermission] = useState(false);
+
+  async function handleScan() {
+    try {
+      const ok = await invoke<boolean>("check_permission");
+      if (!ok) {
+        setShowPermission(true);
+        return;
+      }
+    } catch {
+      // Permission check failed / not supported — proceed anyway
+    }
+    scan();
+  }
 
   const color = CATEGORY_COLORS.trash;
   const totalBytes = items.reduce((s, i) => s + i.sizeBytes, 0);
@@ -56,7 +71,7 @@ export default function TrashBins() {
               size="sm"
               icon={scanned ? RefreshCw : undefined}
               loading={scanning}
-              onClick={scan}
+              onClick={handleScan}
             >
               {scanned ? "Re-scan" : "Scan"}
             </Button>
@@ -64,12 +79,22 @@ export default function TrashBins() {
         </div>
       </div>
 
+      {showPermission && (
+        <PermissionDialog
+          onRetry={() => {
+            setShowPermission(false);
+            handleScan();
+          }}
+          onDismiss={() => setShowPermission(false)}
+        />
+      )}
+
       <div className="flex-1 overflow-y-auto p-6">
         {!scanned && !scanning && (
           <div className="flex flex-col items-center justify-center h-full gap-3 text-center">
             <Trash2 size={36} className="text-text-muted opacity-40" />
             <p className="text-[13px] text-text-muted">Scan to check trash bins across all volumes</p>
-            <Button variant="primary" onClick={scan}>Start Scan</Button>
+            <Button variant="primary" onClick={handleScan}>Start Scan</Button>
           </div>
         )}
 

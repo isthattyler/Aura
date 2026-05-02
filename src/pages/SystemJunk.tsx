@@ -6,6 +6,7 @@ import { type ScanItem, formatBytes, CATEGORY_COLORS } from "@/types";
 import { Card, Badge, SizeLabel } from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import Spinner from "@/components/ui/Spinner";
+import PermissionDialog from "@/components/PermissionDialog";
 
 const SUBCATEGORIES = [
   { key: "caches", label: "User Caches", description: "App and system cache files" },
@@ -20,12 +21,26 @@ export default function SystemJunk() {
   const [items, setItems] = useState<ScanItem[]>([]);
   const [scanning, setScanning] = useState(false);
   const [scanned, setScanned] = useState(false);
+  const [showPermission, setShowPermission] = useState(false);
 
   const color = CATEGORY_COLORS.system_junk;
   const totalBytes = items.reduce((s, i) => s + i.sizeBytes, 0);
   const selectedCount = items.filter((i) => selectedItemIds.has(i.id)).length;
 
-  async function scan() {
+  async function handleScan() {
+    try {
+      const ok = await invoke<boolean>("check_permission");
+      if (!ok) {
+        setShowPermission(true);
+        return;
+      }
+    } catch {
+      // Permission check failed / not supported — proceed anyway
+    }
+    performScan();
+  }
+
+  async function performScan() {
     setScanning(true);
     setScanned(false);
     try {
@@ -80,7 +95,7 @@ export default function SystemJunk() {
               size="sm"
               icon={scanned ? RefreshCw : undefined}
               loading={scanning}
-              onClick={scan}
+              onClick={handleScan}
             >
               {scanned ? "Re-scan" : "Scan"}
             </Button>
@@ -90,13 +105,23 @@ export default function SystemJunk() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-6">
+        {showPermission && (
+          <PermissionDialog
+            onRetry={() => {
+              setShowPermission(false);
+              handleScan();
+            }}
+            onDismiss={() => setShowPermission(false)}
+          />
+        )}
+
         {!scanned && !scanning && (
           <div className="flex flex-col items-center justify-center h-full gap-3 text-center">
             <FileX size={36} className="text-text-muted opacity-40" />
             <p className="text-[13px] text-text-muted">
               Scan to discover junk files on your system
             </p>
-            <Button variant="primary" onClick={scan}>Start Scan</Button>
+            <Button variant="primary" onClick={handleScan}>Start Scan</Button>
           </div>
         )}
 

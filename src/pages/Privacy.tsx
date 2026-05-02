@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { ShieldOff, RefreshCw, Globe, Lock } from "lucide-react";
 import { useAppStore } from "@/store";
 import { type BrowserType, formatBytes, CATEGORY_COLORS } from "@/types";
@@ -6,6 +7,7 @@ import { useScanCategory } from "@/hooks/useScan";
 import { Card, SizeLabel } from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import Spinner from "@/components/ui/Spinner";
+import PermissionDialog from "@/components/PermissionDialog";
 import clsx from "clsx";
 
 const BROWSERS: { key: BrowserType; label: string }[] = [
@@ -19,8 +21,22 @@ const BROWSERS: { key: BrowserType; label: string }[] = [
 
 export default function Privacy() {
   const { setActionSheetOpen, selectedItemIds, toggleItemSelection } = useAppStore();
-  const { items, scanning, scanned, scan } = useScanCategory("privacy");
+  const { items, scanning, scanned, scan: doScan } = useScanCategory("privacy");
   const [activeBrowser, setActiveBrowser] = useState<BrowserType>("chrome");
+  const [showPermission, setShowPermission] = useState(false);
+
+  async function handleScan() {
+    try {
+      const ok = await invoke<boolean>("check_permission");
+      if (!ok) {
+        setShowPermission(true);
+        return;
+      }
+    } catch {
+      // Permission check failed / not supported — proceed anyway
+    }
+    doScan();
+  }
 
   const color = CATEGORY_COLORS.privacy;
   const browserItems = useMemo(() => items.filter((i) => i.description.toLowerCase().includes(activeBrowser)), [items, activeBrowser]);
@@ -67,7 +83,7 @@ export default function Privacy() {
               size="sm"
               icon={scanned ? RefreshCw : undefined}
               loading={scanning}
-              onClick={scan}
+              onClick={handleScan}
             >
               {scanned ? "Re-scan" : "Scan"}
             </Button>
@@ -76,11 +92,21 @@ export default function Privacy() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-6">
+        {showPermission && (
+          <PermissionDialog
+            onRetry={() => {
+              setShowPermission(false);
+              handleScan();
+            }}
+            onDismiss={() => setShowPermission(false)}
+          />
+        )}
+
         {!scanned && !scanning && (
           <div className="flex flex-col items-center justify-center h-full gap-3 text-center">
             <ShieldOff size={36} className="text-text-muted opacity-40" />
             <p className="text-[13px] text-text-muted">Scan browser caches, history, and cookies</p>
-            <Button variant="primary" onClick={scan}>Start Scan</Button>
+            <Button variant="primary" onClick={handleScan}>Start Scan</Button>
           </div>
         )}
 
