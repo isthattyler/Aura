@@ -59,7 +59,7 @@ export default function Button({
       {...props}
     >
       {loading ? (
-        <Spinner size={12} />
+        <Spinner size={14} color="currentColor" />
       ) : (
         Icon && iconPosition === "left" && <Icon size={13} strokeWidth={1.8} />
       )}
