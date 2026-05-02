@@ -9,7 +9,7 @@ import Spinner from "@/components/ui/Spinner";
 import clsx from "clsx";
 
 export default function AppUninstaller() {
-  const { addToast, settings } = useAppStore();
+  const { addToast } = useAppStore();
   const [apps, setApps] = useState<InstalledApp[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
@@ -57,7 +57,7 @@ export default function AppUninstaller() {
         appName: selectedApp.name,
         bundleId: selectedApp.bundleId,
         includeLeftovers,
-        permanent: settings.deleteMode === "permanent",
+        permanent: true,
       });
       addToast({
         type: "success",
