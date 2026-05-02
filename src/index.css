@@ -1,0 +1,182 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─────────────────────────────────────────
+   CSS Custom Properties (Design Tokens)
+───────────────────────────────────────── */
+:root,
+[data-theme="dark"] {
+  --color-bg-base:        #0A0C10;
+  --color-bg-surface:     #0F1219;
+  --color-bg-elevated:    #161B24;
+  --color-bg-overlay:     #1C2333;
+
+  --color-border-subtle:  #1F2733;
+  --color-border-default: #2A3444;
+  --color-border-strong:  #3A4A5E;
+
+  --color-text-primary:   #E8EDF5;
+  --color-text-secondary: #8A97AA;
+  --color-text-muted:     #4A5568;
+
+  --color-accent:         #00D4AA;
+  --color-accent-dim:     rgba(0,212,170,0.13);
+  --color-accent-hover:   #00EAC0;
+
+  --color-success:        #22C987;
+  --color-warning:        #F59E0B;
+  --color-danger:         #EF4444;
+  --color-info:           #60A5FA;
+}
+
+[data-theme="light"] {
+  --color-bg-base:        #F5F7FA;
+  --color-bg-surface:     #FFFFFF;
+  --color-bg-elevated:    #EEF1F6;
+  --color-bg-overlay:     #E2E6ED;
+
+  --color-border-subtle:  #E0E4EB;
+  --color-border-default: #CBD0D9;
+  --color-border-strong:  #A0A8B5;
+
+  --color-text-primary:   #1A1D24;
+  --color-text-secondary: #5A6577;
+  --color-text-muted:     #8E96A6;
+
+  --color-accent:         #00BFA5;
+  --color-accent-dim:     rgba(0,191,165,0.10);
+  --color-accent-hover:   #009E88;
+
+  --color-success:        #22C987;
+  --color-warning:        #F59E0B;
+  --color-danger:         #EF4444;
+  --color-info:           #60A5FA;
+
+  --sidebar-width: 220px;
+  --topbar-height: 52px;
+  --titlebar-height: 0px; /* overridden on Win/Linux */
+}
+
+/* ─────────────────────────────────────────
+   Base Reset
+───────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background-color: var(--color-bg-base);
+  color: var(--color-text-primary);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  user-select: none;
+}
+
+/* Allow text selection in file lists and content areas */
+.selectable {
+  user-select: text;
+}
+
+/* ─────────────────────────────────────────
+   Scrollbar Styling
+───────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-default);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-border-strong);
+}
+
+/* ─────────────────────────────────────────
+   Focus Styles
+───────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ─────────────────────────────────────────
+   Typography Utilities
+───────────────────────────────────────── */
+.font-display {
+  font-family: 'Bricolage Grotesque', sans-serif;
+}
+.font-mono {
+  font-family: 'DM Mono', monospace;
+}
+
+/* ─────────────────────────────────────────
+   Draggable Window Region (Tauri)
+───────────────────────────────────────── */
+[data-tauri-drag-region] {
+  -webkit-app-region: drag;
+}
+button, a, input, select, [role="button"] {
+  -webkit-app-region: no-drag;
+}
+
+/* ─────────────────────────────────────────
+   Animations
+───────────────────────────────────────── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes scanPulse {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50%      { opacity: 0.7; transform: scale(1.05); }
+}
+
+.animate-fade-up     { animation: fadeUp 180ms ease-out forwards; }
+.animate-fade-in     { animation: fadeIn 150ms ease-out forwards; }
+.animate-slide-right { animation: slideInRight 200ms ease-out forwards; }
+
+/* ─────────────────────────────────────────
+   Reduced Motion Overrides
+───────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ─────────────────────────────────────────
+   macOS Traffic Light Spacing
+   (applied when titleBarStyle = "overlay")
+───────────────────────────────────────── */
+.macos-traffic-offset {
+  padding-left: 76px;
+}
