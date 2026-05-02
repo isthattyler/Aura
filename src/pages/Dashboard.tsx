@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { useState } from "react";
 import {
   Zap, FileX, Trash2, Files, Copy, AppWindow,
   Rocket, ShieldOff, Wrench, ChevronRight,
@@ -190,7 +191,9 @@ export default function Dashboard() {
     setScanResults,
     addToast,
     systemStats,
+    settings,
   } = useAppStore();
+  const [cleaning, setCleaning] = useState(false);
 
   async function handleScan() {
     setScanStatus("scanning");
@@ -217,6 +220,37 @@ export default function Dashboard() {
       addToast({ type: "error", title: "Scan failed", description: String(e) });
     } finally {
       unlisten();
+    }
+  }
+
+  async function handleCleanAll() {
+    if (!scanResults) return;
+    const allIds = scanResults.items.map((i) => i.id);
+    if (allIds.length === 0) return;
+
+    setCleaning(true);
+    try {
+      const result = await invoke<{ itemsCleaned: number; bytesFreed: number }>("clean_items", {
+        itemIds: allIds,
+        permanent: settings.deleteMode === "permanent",
+      });
+      addToast({
+        type: "success",
+        title: "Clean complete",
+        description: `Removed ${result.itemsCleaned} items (${formatBytes(result.bytesFreed)})`,
+      });
+      // Backend removes cleaned items from scan state cache; pull the updated state
+      const cached = await invoke<ScanResults | null>("get_scan_results");
+      if (cached && cached.items.length > 0) {
+        setScanResults(cached);
+      } else {
+        setScanResults(null);
+        setScanStatus("idle");
+      }
+    } catch (e) {
+      addToast({ type: "error", title: "Clean failed", description: String(e) });
+    } finally {
+      setCleaning(false);
     }
   }
 
@@ -250,6 +284,19 @@ export default function Dashboard() {
               </span>
             </span>
           </div>
+        )}
+
+        {/* Clean All button after scan completes */}
+        {scanStatus === "complete" && scanResults && scanResults.items.length > 0 && (
+          <Button
+            variant="danger"
+            size="sm"
+            loading={cleaning}
+            onClick={handleCleanAll}
+            className="mt-4"
+          >
+            Clean All ({formatBytes(scanResults.totalBytes)})
+          </Button>
         )}
       </div>
 

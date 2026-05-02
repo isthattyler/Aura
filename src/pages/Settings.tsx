@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Plus, X } from "lucide-react";
 import { useAppStore } from "@/store";
+import Select from "@/components/ui/Select";
 
 export default function Settings() {
   const { settings, updateSettings } = useAppStore();
@@ -30,14 +31,14 @@ export default function Settings() {
               <div className="text-[12.5px] font-medium text-text-primary">Theme</div>
               <div className="text-[11px] text-text-muted">Dark or light appearance</div>
             </div>
-            <select
+            <Select
               value={settings.theme}
-              onChange={(e) => updateSettings({ theme: e.target.value as "dark" | "light" })}
-              className="bg-bg-overlay border border-border-default text-text-primary text-[12px] rounded-md px-2 py-1"
-            >
-              <option value="dark">Dark</option>
-              <option value="light">Light</option>
-            </select>
+              onChange={(v) => updateSettings({ theme: v as "dark" | "light" })}
+              options={[
+                { value: "dark", label: "Dark" },
+                { value: "light", label: "Light" },
+              ]}
+            />
           </label>
         </div>
 
@@ -49,14 +50,14 @@ export default function Settings() {
               <div className="text-[12.5px] font-medium text-text-primary">Delete Mode</div>
               <div className="text-[11px] text-text-muted">How items are removed</div>
             </div>
-            <select
+            <Select
               value={settings.deleteMode}
-              onChange={(e) => updateSettings({ deleteMode: e.target.value as "trash" | "permanent" })}
-              className="bg-bg-overlay border border-border-default text-text-primary text-[12px] rounded-md px-2 py-1"
-            >
-              <option value="trash">Move to Trash</option>
-              <option value="permanent">Delete Permanently</option>
-            </select>
+              onChange={(v) => updateSettings({ deleteMode: v as "trash" | "permanent" })}
+              options={[
+                { value: "trash", label: "Move to Trash" },
+                { value: "permanent", label: "Delete Permanently" },
+              ]}
+            />
           </label>
         </div>
 

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { FileX, Folder, RefreshCw } from "lucide-react";
 import { useAppStore } from "@/store";
@@ -17,7 +17,7 @@ const SUBCATEGORIES = [
 ];
 
 export default function SystemJunk() {
-  const { addToast, setActionSheetOpen, selectedItemIds, toggleItemSelection } = useAppStore();
+  const { addToast, setActionSheetOpen, selectedItemIds, toggleItemSelection, scanResults, scanStatus } = useAppStore();
   const [items, setItems] = useState<ScanItem[]>([]);
   const [scanning, setScanning] = useState(false);
   const [scanned, setScanned] = useState(false);
@@ -26,6 +26,17 @@ export default function SystemJunk() {
   const color = CATEGORY_COLORS.system_junk;
   const totalBytes = items.reduce((s, i) => s + i.sizeBytes, 0);
   const selectedCount = items.filter((i) => selectedItemIds.has(i.id)).length;
+
+  // Use cached Smart Scan results if available
+  useEffect(() => {
+    if (scanStatus === "complete" && scanResults) {
+      const cached = scanResults.byCategory.system_junk;
+      if (cached && cached.items.length > 0) {
+        setItems(cached.items);
+        setScanned(true);
+      }
+    }
+  }, [scanStatus, scanResults]);
 
   async function handleScan() {
     try {

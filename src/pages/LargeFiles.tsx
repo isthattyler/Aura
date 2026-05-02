@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Files, RefreshCw, ArrowUpDown } from "lucide-react";
 import { useAppStore } from "@/store";
@@ -11,7 +11,7 @@ import PermissionDialog from "@/components/PermissionDialog";
 type SortKey = "size" | "name" | "accessed";
 
 export default function LargeFiles() {
-  const { settings, addToast, setActionSheetOpen, selectedItemIds, toggleItemSelection } = useAppStore();
+  const { settings, addToast, setActionSheetOpen, selectedItemIds, toggleItemSelection, scanResults, scanStatus } = useAppStore();
   const [items, setItems] = useState<ScanItem[]>([]);
   const [scanning, setScanning] = useState(false);
   const [scanned, setScanned] = useState(false);
@@ -22,6 +22,17 @@ export default function LargeFiles() {
   const color = CATEGORY_COLORS["large_files"];
   const totalBytes = items.reduce((s, i) => s + i.sizeBytes, 0);
   const selectedCount = items.filter((i) => selectedItemIds.has(i.id)).length;
+
+  // Use cached Smart Scan results if available
+  useEffect(() => {
+    if (scanStatus === "complete" && scanResults) {
+      const cached = scanResults.byCategory.large_files;
+      if (cached && cached.items.length > 0) {
+        setItems(cached.items);
+        setScanned(true);
+      }
+    }
+  }, [scanStatus, scanResults]);
 
   async function handleScan() {
     try {

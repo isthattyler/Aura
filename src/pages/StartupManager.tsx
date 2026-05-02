@@ -9,7 +9,7 @@ import Spinner from "@/components/ui/Spinner";
 export default function StartupManager() {
   const { addToast } = useAppStore();
   const [items, setItems] = useState<StartupItem[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [toggling, setToggling] = useState<string | null>(null);
 

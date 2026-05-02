@@ -1,14 +1,25 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { type ScanItem, type ScanCategory, type ScanProgress } from "@/types";
 import { useAppStore } from "@/store";
 
 export function useScanCategory(category: ScanCategory) {
-  const { addToast } = useAppStore();
+  const { addToast, scanResults, scanStatus } = useAppStore();
   const [items, setItems] = useState<ScanItem[]>([]);
   const [scanning, setScanning] = useState(false);
   const [scanned, setScanned] = useState(false);
   const [progress, setProgress] = useState<ScanProgress | null>(null);
+
+  // On mount, use cached Smart Scan results if available
+  useEffect(() => {
+    if (scanStatus === "complete" && scanResults) {
+      const cached = scanResults.byCategory[category];
+      if (cached && cached.items.length > 0) {
+        setItems(cached.items);
+        setScanned(true);
+      }
+    }
+  }, [category, scanStatus, scanResults]);
 
   const scan = useCallback(async () => {
     setScanning(true);
