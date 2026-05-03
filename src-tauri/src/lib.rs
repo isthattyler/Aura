@@ -46,6 +46,8 @@ pub fn run() {
             // Privacy
             commands::privacy::scan_privacy,
             commands::privacy::clean_privacy,
+            // Maintenance
+            commands::maintenance::free_up_ram,
         ])
         .setup(|app| {
             #[cfg(debug_assertions)]

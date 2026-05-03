@@ -92,6 +92,11 @@ export interface CleanError {
 
 // ── System Stats ──────────────────────────
 
+export interface RamCleanResult {
+  bytesFreed: number;
+  message: string;
+}
+
 export interface SystemStats {
   cpuUsagePercent: number;
   ramUsedBytes: number;

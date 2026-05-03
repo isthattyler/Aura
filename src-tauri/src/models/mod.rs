@@ -208,6 +208,17 @@ pub struct StartupItem {
 }
 
 // ─────────────────────────────────────────
+// Maintenance
+// ─────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RamCleanResult {
+    pub bytes_freed: u64,
+    pub message: String,
+}
+
+// ─────────────────────────────────────────
 // Disk
 // ─────────────────────────────────────────
 

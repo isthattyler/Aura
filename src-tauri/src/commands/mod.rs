@@ -6,6 +6,7 @@ pub mod startup;
 pub mod disk;
 pub mod privacy;
 pub mod permission;
+pub mod maintenance;
 
 #[allow(unused_imports)]
 pub use scan::*;
