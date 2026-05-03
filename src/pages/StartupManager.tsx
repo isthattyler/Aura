@@ -8,6 +8,8 @@ import Spinner from "@/components/ui/Spinner";
 import Button from "@/components/ui/Button";
 import PermissionDialog from "@/components/PermissionDialog";
 
+const FDA_PROMPTED_KEY = "aura-startup-fda-prompted";
+
 const TYPE_LABELS: Record<string, string> = {
   launchd_agent: "Launch Agent",
   launchd_daemon: "Launch Daemon",
@@ -45,32 +47,64 @@ export default function StartupManager() {
   const [removing, setRemoving] = useState<string | null>(null);
   const [hasFda, setHasFda] = useState<boolean | null>(null);
   const [showPermission, setShowPermission] = useState(false);
+  const [showSystemItems, setShowSystemItems] = useState(false);
 
   const color = CATEGORY_COLORS.startup;
 
-  const loadItems = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [result, fda] = await Promise.all([
-        invoke<StartupItem[]>("list_startup_items"),
-        invoke<boolean>("check_permission").catch(() => true),
-      ]);
-      setItems(result);
-      setLoaded(true);
-      setHasFda(fda);
-    } catch (e) {
-      addToast({ type: "error", title: "Failed to load startup items", description: String(e) });
-      setLoaded(true);
-    } finally {
-      setLoading(false);
-    }
-  }, [addToast]);
+  const loadItems = useCallback(
+    async (includeSystem: boolean) => {
+      setLoading(true);
+      try {
+        const [result, fda] = await Promise.all([
+          invoke<StartupItem[]>("list_startup_items", {
+            includeSystem,
+            includeBtm: includeSystem,
+          }),
+          invoke<boolean>("check_permission").catch(() => null as boolean | null),
+        ]);
+        setItems(result);
+        setLoaded(true);
+        setHasFda(fda);
+      } catch (e) {
+        addToast({ type: "error", title: "Failed to load startup items", description: String(e) });
+        setLoaded(true);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [addToast],
+  );
 
-  useEffect(() => { void loadItems(); }, [loadItems]);
+  // Load user-only items on mount (no prompts)
+  useEffect(
+    () => {
+      void loadItems(false);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+
+  // One-time FDA prompt: show PermissionDialog on first visit if FDA not granted
+  useEffect(() => {
+    if (hasFda === false && !localStorage.getItem(FDA_PROMPTED_KEY)) {
+      setShowPermission(true);
+      localStorage.setItem(FDA_PROMPTED_KEY, "true");
+    }
+  }, [hasFda]);
+
+  async function handleToggleSystem() {
+    const next = !showSystemItems;
+    setShowSystemItems(next);
+    if (next) {
+      await loadItems(true);
+    } else {
+      await loadItems(false);
+    }
+  }
 
   async function handleRetry() {
     setShowPermission(false);
-    await loadItems();
+    await loadItems(showSystemItems);
   }
 
   async function toggleItem(item: StartupItem) {
@@ -156,20 +190,29 @@ export default function StartupManager() {
               {loaded ? `${items.length} found` : "—"}
             </div>
           </div>
-          {loaded && (
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-1.5 text-[11px] text-text-secondary cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={showSystemItems}
+                onChange={() => void handleToggleSystem()}
+                className="w-3.5 h-3.5 accent-[#00D4AA] cursor-pointer"
+              />
+              Show system services
+            </label>
             <button
-              onClick={() => void loadItems()}
+              onClick={() => void handleToggleSystem()}
               className="text-[11px] text-accent hover:text-accent-hover transition-colors"
             >
               Refresh
             </button>
-          )}
+          </div>
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-6">
-        {/* FDA Banner */}
-        {loaded && hasFda === false && (
+        {/* FDA Banner — only show after one-time prompt if FDA still not granted */}
+        {loaded && hasFda === false && localStorage.getItem(FDA_PROMPTED_KEY) && (
           <div className="flex items-center gap-3 mb-5 px-4 py-3 bg-warning/10 border border-warning/20 rounded-xl">
             <ShieldOff size={16} className="text-warning shrink-0" />
             <div className="flex-1 min-w-0">
@@ -179,7 +222,7 @@ export default function StartupManager() {
               <p className="text-[11px] text-text-muted mt-0.5">
                 {systemItemCount > 0
                   ? "Some system services are hidden"
-                  : "System startup items can't be scanned"}
+                  : "Enable to see system startup items"}
               </p>
             </div>
             <Button variant="secondary" size="sm" onClick={() => setShowPermission(true)}>
@@ -199,7 +242,9 @@ export default function StartupManager() {
             <Rocket size={28} className="text-text-muted opacity-40" />
             <p className="text-[13px] font-medium text-text-primary">No startup items found</p>
             <p className="text-[12px] text-text-muted max-w-xs">
-              Login items, LaunchAgents, LaunchDaemons, and background tasks will appear here
+              {showSystemItems
+                ? "Login items, LaunchAgents, LaunchDaemons, and background tasks will appear here"
+                : "Check \"Show system services\" to include system daemons"}
             </p>
           </div>
         )}

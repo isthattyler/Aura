@@ -392,9 +392,23 @@ fn collect_plist_dir(
     found
 }
 
-/// Collect all startup items from all sources.
+/// Collect startup items from user-level sources.
+/// Fast, no password prompts — skips system dirs and BTM.
+pub fn collect_user_startup_items() -> Result<Vec<StartupItem>, AppError> {
+    collect_startup_items(false, false)
+}
+
+/// Collect ALL startup items including system dirs and BTM.
+/// May require Full Disk Access or trigger TCC prompts.
+pub fn collect_all_startup_items() -> Result<Vec<StartupItem>, AppError> {
+    collect_startup_items(true, true)
+}
+
+/// Collect startup items from all sources.
 /// Tries system directories but silently skips them if permission is denied.
-pub fn collect_startup_items() -> Result<Vec<StartupItem>, AppError> {
+/// - `include_system`: scan /System/Library/LaunchAgents/ and /System/Library/LaunchDaemons/
+/// - `include_btm`: run sfltool dumpbtm for Background Task Management items
+pub(crate) fn collect_startup_items(include_system: bool, include_btm: bool) -> Result<Vec<StartupItem>, AppError> {
     let mut items = Vec::new();
 
     // 1. User LaunchAgents (~/Library/LaunchAgents)
@@ -420,42 +434,51 @@ pub fn collect_startup_items() -> Result<Vec<StartupItem>, AppError> {
     );
 
     // 4. System LaunchAgents (FDA may be needed)
-    collect_plist_dir(
-        &PathBuf::from("/System/Library/LaunchAgents"),
-        "launchd_agent",
-        true,
-        &mut items,
-    );
+    if include_system {
+        collect_plist_dir(
+            &PathBuf::from("/System/Library/LaunchAgents"),
+            "launchd_agent",
+            true,
+            &mut items,
+        );
+    }
 
     // 5. System LaunchDaemons (FDA may be needed)
-    collect_plist_dir(
-        &PathBuf::from("/System/Library/LaunchDaemons"),
-        "launchd_daemon",
-        true,
-        &mut items,
-    );
+    if include_system {
+        collect_plist_dir(
+            &PathBuf::from("/System/Library/LaunchDaemons"),
+            "launchd_daemon",
+            true,
+            &mut items,
+        );
+    }
 
     // 6. App bundle LaunchAgents/Daemons
     scan_app_bundle_plists(&mut items);
 
-    // 7. BTM database
-    let btm_entries = parse_btm_entries();
-    let mut btm_labels: std::collections::HashSet<String> = std::collections::HashSet::new();
+    // 7. BTM database (may trigger TCC prompt — only when explicitly requested)
+    let btm_labels: std::collections::HashSet<String> = if include_btm {
+        let btm_entries = parse_btm_entries();
+        let mut labels = std::collections::HashSet::new();
 
-    for be in &btm_entries {
-        let name = be.name.clone().unwrap_or_else(|| be.identifier.clone());
-        btm_labels.insert(be.identifier.clone());
+        for be in &btm_entries {
+            let name = be.name.clone().unwrap_or_else(|| be.identifier.clone());
+            labels.insert(be.identifier.clone());
 
-        items.push(StartupItem {
-            id: uuid::Uuid::new_v4().to_string(),
-            name,
-            path: be.url.clone().unwrap_or_else(|| be.identifier.clone()),
-            startup_type: be.entry_type.clone(),
-            enabled: be.enabled,
-            publisher: be.developer_name.clone(),
-            description: be.executable_path.clone(),
-        });
-    }
+            items.push(StartupItem {
+                id: uuid::Uuid::new_v4().to_string(),
+                name,
+                path: be.url.clone().unwrap_or_else(|| be.identifier.clone()),
+                startup_type: be.entry_type.clone(),
+                enabled: be.enabled,
+                publisher: be.developer_name.clone(),
+                description: be.executable_path.clone(),
+            });
+        }
+        labels
+    } else {
+        std::collections::HashSet::new()
+    };
 
     // 8. Deduplicate: if a plist item has the same Label as a BTM item, remove it
     items.retain(|item| {

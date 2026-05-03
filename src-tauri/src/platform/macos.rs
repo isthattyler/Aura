@@ -100,7 +100,7 @@ impl PlatformPaths for MacOsPlatform {
     }
 
     fn startup_entries(&self) -> Result<Vec<StartupItem>, AppError> {
-        macos_startup::collect_startup_items()
+        macos_startup::collect_all_startup_items()
     }
 
     fn protected_paths(&self) -> Vec<PathBuf> {

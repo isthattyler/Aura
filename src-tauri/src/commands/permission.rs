@@ -34,37 +34,25 @@ pub async fn request_permission() -> Result<(), AppError> {
 fn check_full_disk_access() -> bool {
     use std::path::PathBuf;
 
-    // Try accessing paths that require Full Disk Access on macOS
-    // If all attempts return PermissionDenied, FDA is likely not granted.
-
-    // 1. Try user Trash
-    if let Some(home) = dirs::home_dir() {
-        let trash = home.join(".Trash");
-        if trash.exists() {
-            match std::fs::read_dir(&trash) {
-                Ok(_) => return true,
-                Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
-                    // Need FDA
-                    return false;
+    // Try reading /System/Library/LaunchDaemons/ — on macOS 14+ this requires FDA.
+    // If PermissionDenied, FDA is not granted.
+    let system_daemons = PathBuf::from("/System/Library/LaunchDaemons");
+    if system_daemons.exists() {
+        match std::fs::read_dir(&system_daemons) {
+            Ok(entries) => {
+                // Verify we can actually read at least one file inside
+                for entry in entries.flatten() {
+                    if let Ok(meta) = entry.metadata() {
+                        return meta.is_file();
+                    }
                 }
-                Err(_) => {
-                    // Some other error — assume OK
-                    return true;
-                }
+                // Could list dir but can't read files — assume FDA not granted
+                false
             }
+            Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => false,
+            Err(_) => false,
         }
+    } else {
+        !cfg!(target_os = "macos")
     }
-
-    // 2. Try /Volumes — if it exists, we may need FDA to list it
-    let volumes = PathBuf::from("/Volumes");
-    if volumes.exists() {
-        match std::fs::read_dir(&volumes) {
-            Ok(_) => return true,
-            Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => return false,
-            Err(_) => return true,
-        }
-    }
-
-    // No test path existed or errors were non-permission — assume OK
-    true
 }

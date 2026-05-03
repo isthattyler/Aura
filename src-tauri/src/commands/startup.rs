@@ -1,12 +1,34 @@
 use crate::error::AppError;
 use crate::models::StartupItem;
+#[cfg(not(target_os = "macos"))]
 use crate::platform::current_platform;
 
-/// List all startup / login items
+/// List all startup / login items.
+/// On macOS, by default returns only user-level items (no system dirs, no BTM)
+/// to avoid triggering TCC/password prompts.
+/// Pass `includeSystem: true` to scan system LaunchDaemons/Agents.
+/// Pass `includeBtm: true` to query the Background Task Management database.
 #[tauri::command]
-pub fn list_startup_items() -> Result<Vec<StartupItem>, AppError> {
-    let platform = current_platform();
-    platform.startup_entries()
+pub fn list_startup_items(
+    include_system: Option<bool>,
+    include_btm: Option<bool>,
+) -> Result<Vec<StartupItem>, AppError> {
+    #[cfg(target_os = "macos")]
+    {
+        let include_system = include_system.unwrap_or(false);
+        let include_btm = include_btm.unwrap_or(false);
+        if include_system || include_btm {
+            return crate::platform::macos_startup::collect_startup_items(include_system, include_btm);
+        }
+        return crate::platform::macos_startup::collect_user_startup_items();
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (include_system, include_btm);
+        let platform = current_platform();
+        platform.startup_entries()
+    }
 }
 
 /// Toggle a startup item's enabled state.
