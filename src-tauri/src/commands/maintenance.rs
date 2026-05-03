@@ -33,7 +33,7 @@ pub fn free_up_ram() -> Result<RamCleanResult, AppError> {
     })
 }
 
-// ── macOS: osascript → /usr/bin/purge ─────────────────────────
+// ── macOS: osascript → /usr/sbin/purge ────────────────────────
 
 #[cfg(target_os = "macos")]
 fn free_ram_macos() -> Result<String, AppError> {
@@ -42,16 +42,31 @@ fn free_ram_macos() -> Result<String, AppError> {
     let output = Command::new("osascript")
         .args([
             "-e",
-            "do shell script \"/usr/bin/purge\" with administrator privileges",
+            "do shell script \"/usr/sbin/purge\" with administrator privileges",
         ])
         .output()
-        .map_err(|e| AppError::Io(format!("Failed to run purge: {}", e)))?;
+        .map_err(|e| {
+            log::error!("Failed to spawn osascript: {}", e);
+            AppError::Io(format!("Could not run system purge command: {}", e))
+        })?;
 
     if !output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(AppError::Permission(format!("purge failed: {}", stderr)));
+        log::error!("purge failed — stdout: {}, stderr: {}", stdout, stderr);
+
+        let detail = stderr.trim().to_string();
+        if detail.is_empty() {
+            return Err(AppError::Permission("purge command failed with no output".into()));
+        }
+        // User cancelled the admin dialog — not a real error
+        if detail.contains("User canceled") || detail.contains("canceled") {
+            return Err(AppError::Permission("User cancelled".into()));
+        }
+        return Err(AppError::Permission(detail));
     }
 
+    log::info!("Memory purge completed successfully");
     Ok("Inactive memory and disk caches cleared".into())
 }
 

@@ -45,6 +45,14 @@ const TASKS: Task[] = [
   },
 ];
 
+function getErrorMessage(e: unknown): string {
+  if (typeof e === "string") return e;
+  if (e && typeof e === "object" && "message" in e) {
+    return String((e as { message: unknown }).message);
+  }
+  return String(e);
+}
+
 export default function Maintenance() {
   const { addToast, systemStats, setSystemStats } = useAppStore();
   const [running, setRunning] = useState<string | null>(null);
@@ -67,7 +75,7 @@ export default function Maintenance() {
       addToast({ type: "success", title: task.name, description: "Completed" });
     } catch (e) {
       setResults((prev) => ({ ...prev, [task.id]: "error" }));
-      addToast({ type: "error", title: task.name, description: String(e) });
+      addToast({ type: "error", title: task.name, description: getErrorMessage(e) });
     } finally {
       setRunning(null);
     }
@@ -88,8 +96,14 @@ export default function Maintenance() {
       const stats = await invoke<SystemStats>("get_system_stats");
       setSystemStats(stats);
     } catch (e) {
-      setRamResult("error");
-      addToast({ type: "error", title: "Failed to free RAM", description: String(e) });
+      const msg = getErrorMessage(e);
+      // User cancelled the admin dialog — not an error
+      if (msg.includes("User cancelled")) {
+        setRamResult(null);
+      } else {
+        setRamResult("error");
+        addToast({ type: "error", title: "Failed to free RAM", description: msg });
+      }
     } finally {
       setRamRunning(false);
     }
