@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import {
   type Page,
+  type ScanCategory,
   type ScanStatus,
   type ScanResults,
   type ScanProgress,
@@ -54,6 +55,16 @@ interface AppStore {
   toggleItemSelection: (id: string) => void;
   selectAllInCategory: (category: string) => void;
   clearSelection: () => void;
+
+  // Scan UI State (persists across tab navigation)
+  categoryBytes: Partial<Record<ScanCategory, number>>;
+  completedCategories: Set<ScanCategory>;
+  selectedCategories: Set<ScanCategory>;
+
+  addCompletedCategory: (cat: ScanCategory, bytes: number) => void;
+  toggleSelectedCategory: (cat: ScanCategory) => void;
+  setSelectedCategories: (cats: Set<ScanCategory>) => void;
+  resetScanState: () => void;
 
   // Clean State
   cleanResult: CleanResult | null;
@@ -121,6 +132,35 @@ export const useAppStore = create<AppStore>((set, get) => ({
     }),
 
   clearSelection: () => set({ selectedItemIds: new Set() }),
+
+  // ── Scan UI State (persists across tab nav) ──
+  categoryBytes: {},
+  completedCategories: new Set<ScanCategory>(),
+  selectedCategories: new Set<ScanCategory>(),
+
+  addCompletedCategory: (cat, bytes) =>
+    set((state) => ({
+      categoryBytes: { ...state.categoryBytes, [cat]: bytes },
+      completedCategories: new Set(state.completedCategories).add(cat),
+    })),
+
+  toggleSelectedCategory: (cat) =>
+    set((state) => {
+      const next = new Set(state.selectedCategories);
+      if (next.has(cat)) next.delete(cat);
+      else next.add(cat);
+      return { selectedCategories: next };
+    }),
+
+  setSelectedCategories: (cats) => set({ selectedCategories: cats }),
+
+  resetScanState: () => set({
+    scanProgress: null,
+    scanResults: null,
+    categoryBytes: {},
+    completedCategories: new Set<ScanCategory>(),
+    selectedCategories: new Set<ScanCategory>(),
+  }),
 
   // ── Clean State ───────────────────────
   cleanResult: null,

@@ -265,11 +265,15 @@ export default function Dashboard() {
     addToast,
     systemStats,
     settings,
+    categoryBytes,
+    completedCategories,
+    selectedCategories,
+    addCompletedCategory,
+    toggleSelectedCategory,
+    setSelectedCategories,
+    resetScanState,
   } = useAppStore();
   const [cleaning, setCleaning] = useState(false);
-  const [completedCategories, setCompletedCategories] = useState<Set<ScanCategory>>(new Set());
-  const [categoryBytes, setCategoryBytes] = useState<Partial<Record<ScanCategory, number>>>({});
-  const [selectedCategories, setSelectedCategories] = useState<Set<ScanCategory>>(new Set());
   const stoppedRef = useRef(false);
 
   const accumulatedBytes = Object.values(categoryBytes).reduce((a, b) => a + b, 0);
@@ -277,18 +281,14 @@ export default function Dashboard() {
 
   async function handleScan() {
     stoppedRef.current = false;
+    resetScanState();
     setScanStatus("scanning");
-    setScanProgress(null);
-    setScanResults(null);
-    setCompletedCategories(new Set());
-    setCategoryBytes({});
 
     const unlisten = await listen<ScanProgress>("scan_progress", (e) => {
       if (stoppedRef.current) return;
       setScanProgress(e.payload);
       if (e.payload.phase === "complete") {
-        setCategoryBytes((prev) => ({ ...prev, [e.payload.category]: e.payload.bytesFound }));
-        setCompletedCategories((prev) => new Set(prev).add(e.payload.category));
+        addCompletedCategory(e.payload.category, e.payload.bytesFound);
       }
     });
 
@@ -353,9 +353,8 @@ export default function Dashboard() {
         });
         setSelectedCategories(new Set(remaining));
       } else {
-        setScanResults(null);
+        resetScanState();
         setScanStatus("idle");
-        setSelectedCategories(new Set());
       }
     } catch (e) {
       addToast({ type: "error", title: "Clean failed", description: String(e) });
@@ -364,22 +363,25 @@ export default function Dashboard() {
     }
   }
 
-  function toggleCategory(cat: ScanCategory) {
-    setSelectedCategories((prev) => {
-      const next = new Set(prev);
-      if (next.has(cat)) next.delete(cat);
-      else next.add(cat);
-      return next;
-    });
-  }
-
   const healthScore = systemStats?.healthScore ?? 0;
+
+  const catsWithData = scanResults
+    ? ALL_CATEGORIES.filter((cat) => {
+        const r = scanResults.byCategory[cat];
+        return r && r.itemCount > 0;
+      })
+    : [];
 
   // Compute selected bytes for Clean All button
   const selectedItems = scanStatus === "complete" && scanResults
     ? scanResults.items.filter((i) => selectedCategories.has(i.category))
     : [];
   const selectedBytes = selectedItems.reduce((s, i) => s + i.sizeBytes, 0);
+
+  const allSelected = catsWithData.length > 0 && catsWithData.every((cat) => selectedCategories.has(cat));
+  const cleanButtonLabel = allSelected
+    ? "Clean All"
+    : `Clean Selected (${formatBytes(selectedBytes)})`;
 
   const showCheckbox = scanStatus === "complete" && scanResults !== null;
 
@@ -425,7 +427,7 @@ export default function Dashboard() {
             onClick={handleCleanAll}
             className="mt-4"
           >
-            Clean Selected ({formatBytes(selectedBytes)})
+            {cleanButtonLabel}
           </Button>
         )}
       </div>
@@ -440,6 +442,22 @@ export default function Dashboard() {
         >
           {showCheckbox ? "Deselect categories to skip cleaning" : "Scan Results"}
         </div>
+        {showCheckbox && catsWithData.length > 0 && (
+          <div className="flex items-center gap-3 mb-3">
+            <button
+              onClick={() => setSelectedCategories(new Set(catsWithData))}
+              className="text-[10px] font-medium text-accent hover:text-accent-hover transition-colors"
+            >
+              Select All
+            </button>
+            <button
+              onClick={() => setSelectedCategories(new Set())}
+              className="text-[10px] font-medium text-text-muted hover:text-text-secondary transition-colors"
+            >
+              Uncheck All
+            </button>
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-2">
           {ALL_CATEGORIES.map((cat) => (
             <CategoryCard
@@ -451,7 +469,7 @@ export default function Dashboard() {
               completedCategories={completedCategories}
               isSelected={selectedCategories.has(cat)}
               showCheckbox={showCheckbox}
-              onToggleSelect={() => toggleCategory(cat)}
+              onToggleSelect={() => toggleSelectedCategory(cat)}
             />
           ))}
         </div>
