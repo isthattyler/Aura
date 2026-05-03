@@ -170,8 +170,8 @@ export function ProgressRing({
   const offset = circumference - (Math.min(100, Math.max(0, value)) / 100) * circumference;
 
   return (
-    <div className={clsx("relative inline-flex items-center justify-center", className)}>
-      <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
+    <div className={clsx("relative flex items-center justify-center", className)}>
+      <svg width={size} height={size} style={{ transform: "rotate(-90deg)", display: "block" }}>
         {/* Track */}
         <circle
           cx={size / 2}

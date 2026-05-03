@@ -1,9 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import {
   Zap, FileX, Trash2, Files, Copy, AppWindow,
-  Rocket, ShieldOff, Wrench, ChevronRight,
+  Rocket, ShieldOff, Wrench, ChevronRight, Square,
 } from "lucide-react";
 import { useAppStore } from "@/store";
 import {
@@ -39,13 +39,17 @@ function ScanRing({
   progress,
   progressPct,
   results,
+  accumulatedBytes,
   onScan,
+  onStop,
 }: {
   status: string;
   progress: ScanProgress | null;
   progressPct: number;
   results: ScanResults | null;
+  accumulatedBytes: number;
   onScan: () => void;
+  onStop: () => void;
 }) {
   const totalBytes = results?.totalBytes ?? 0;
   const hasResults = status === "complete" && results;
@@ -53,7 +57,6 @@ function ScanRing({
   return (
     <div className="flex flex-col items-center gap-6">
       <div className="relative">
-        {/* Outer glow ring when scanning */}
         {status === "scanning" && (
           <div
             className="absolute inset-0 rounded-full animate-pulse-slow"
@@ -80,11 +83,9 @@ function ScanRing({
                 <span className="text-[11px] text-accent font-mono">
                   {progress?.category ? categoryLabel(progress.category) : "Scanning…"}
                 </span>
-                {progress && (
-                  <span className="text-[10px] text-text-muted font-mono mt-0.5">
-                    {formatBytes(progress.bytesFound)} found
-                  </span>
-                )}
+                <span className="text-[10px] text-text-muted font-mono mt-0.5">
+                  {formatBytes(accumulatedBytes)} found
+                </span>
               </>
             )}
             {status === "complete" && (
@@ -102,16 +103,27 @@ function ScanRing({
         </ProgressRing>
       </div>
 
-      <Button
-        variant="primary"
-        size="lg"
-        icon={Zap}
-        loading={status === "scanning"}
-        onClick={onScan}
-        className="w-44 shadow-glow"
-      >
-        {status === "complete" ? "Re-scan" : "Smart Scan"}
-      </Button>
+      {status === "scanning" ? (
+        <Button
+          variant="secondary"
+          size="lg"
+          icon={Square}
+          onClick={onStop}
+          className="w-44 bg-warning/10 text-warning border border-warning/20 hover:bg-warning/20"
+        >
+          Stop
+        </Button>
+      ) : (
+        <Button
+          variant="primary"
+          size="lg"
+          icon={Zap}
+          onClick={onScan}
+          className="w-44 shadow-glow"
+        >
+          {status === "complete" ? "Re-scan" : "Smart Scan"}
+        </Button>
+      )}
     </div>
   );
 }
@@ -126,12 +138,18 @@ function CategoryCard({
   scanStatus,
   currentCategory,
   completedCategories,
+  isSelected,
+  showCheckbox,
+  onToggleSelect,
 }: {
   category: ScanCategory;
   results: ScanResults | null;
   scanStatus: string;
   currentCategory: ScanCategory | null;
   completedCategories: Set<ScanCategory>;
+  isSelected: boolean;
+  showCheckbox: boolean;
+  onToggleSelect: () => void;
 }) {
   const setCurrentPage = useAppStore((s) => s.setCurrentPage);
   const Icon = CATEGORY_ICONS[category];
@@ -157,6 +175,7 @@ function CategoryCard({
   return (
     <Card
       accentColor={
+        (showCheckbox && isSelected) ? color :
         (hasResults || isCompleted || isScanning) ? color : undefined
       }
       interactive
@@ -165,6 +184,7 @@ function CategoryCard({
         "group",
         isScanning && "animate-scan-pulse",
         isPending && "opacity-50",
+        showCheckbox && !isSelected && "opacity-60",
       )}
       style={
         isScanning
@@ -173,6 +193,29 @@ function CategoryCard({
       }
     >
       <div className="flex items-center gap-3">
+        {/* Checkbox for Clean All selection — top-left overlay */}
+        {showCheckbox && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleSelect();
+            }}
+            className={clsx(
+              "shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors",
+              isSelected
+                ? "border-transparent"
+                : "border-border-default hover:border-border-strong",
+            )}
+            style={isSelected ? { backgroundColor: color, borderColor: color } : undefined}
+          >
+            {isSelected && (
+              <svg width={10} height={10} viewBox="0 0 10 10" fill="none">
+                <path d="M2 5l2 2 4-4" stroke="#fff" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            )}
+          </button>
+        )}
+
         <div
           className={clsx(
             "w-8 h-8 rounded-lg flex items-center justify-center shrink-0",
@@ -189,18 +232,12 @@ function CategoryCard({
         <div className="flex-1 min-w-0">
           <div className="text-[12px] font-medium text-text-primary">{categoryLabel(category)}</div>
           <div className="text-[11px] font-mono text-text-muted mt-0.5">
-            {isScanning && (
-              <span className="text-accent">Scanning…</span>
-            )}
-            {isCompleted && !results && (
-              <span style={{ color }}>Done</span>
-            )}
+            {isScanning && <span className="text-accent">Scanning…</span>}
+            {isCompleted && !results && <span style={{ color }}>Done</span>}
             {!isScanning && !isCompleted && !results && "—"}
             {!isScanning && results && !hasResults && "Nothing found"}
             {!isScanning && hasResults && (
-              <span style={{ color }}>
-                {formatBytes(catResult.totalBytes)}
-              </span>
+              <span style={{ color }}>{formatBytes(catResult.totalBytes)}</span>
             )}
           </div>
         </div>
@@ -231,18 +268,26 @@ export default function Dashboard() {
   } = useAppStore();
   const [cleaning, setCleaning] = useState(false);
   const [completedCategories, setCompletedCategories] = useState<Set<ScanCategory>>(new Set());
+  const [categoryBytes, setCategoryBytes] = useState<Partial<Record<ScanCategory, number>>>({});
+  const [selectedCategories, setSelectedCategories] = useState<Set<ScanCategory>>(new Set());
+  const stoppedRef = useRef(false);
 
+  const accumulatedBytes = Object.values(categoryBytes).reduce((a, b) => a + b, 0);
   const progressPct = Math.round((completedCategories.size / ALL_CATEGORIES.length) * 100);
 
   async function handleScan() {
+    stoppedRef.current = false;
     setScanStatus("scanning");
     setScanProgress(null);
     setScanResults(null);
     setCompletedCategories(new Set());
+    setCategoryBytes({});
 
     const unlisten = await listen<ScanProgress>("scan_progress", (e) => {
+      if (stoppedRef.current) return;
       setScanProgress(e.payload);
       if (e.payload.phase === "complete") {
+        setCategoryBytes((prev) => ({ ...prev, [e.payload.category]: e.payload.bytesFound }));
         setCompletedCategories((prev) => new Set(prev).add(e.payload.category));
       }
     });
@@ -251,14 +296,24 @@ export default function Dashboard() {
       const results = await invoke<ScanResults>("start_scan", {
         options: { categories: ALL_CATEGORIES },
       });
+      if (stoppedRef.current) return;
       setScanResults(results);
       setScanStatus("complete");
+
+      // Initialize all categories with results as selected for Clean All
+      const catsWithData = ALL_CATEGORIES.filter((cat) => {
+        const r = results.byCategory[cat];
+        return r && r.itemCount > 0;
+      });
+      setSelectedCategories(new Set(catsWithData));
+
       addToast({
         type: "success",
         title: "Scan complete",
         description: `${formatBytes(results.totalBytes)} found across ${results.items.length} items`,
       });
     } catch (e) {
+      if (stoppedRef.current) return;
       setScanStatus("error");
       addToast({ type: "error", title: "Scan failed", description: String(e) });
     } finally {
@@ -266,15 +321,22 @@ export default function Dashboard() {
     }
   }
 
+  async function handleStop() {
+    stoppedRef.current = true;
+    await invoke("cancel_scan").catch(() => {});
+    setScanStatus("idle");
+    setScanProgress(null);
+  }
+
   async function handleCleanAll() {
     if (!scanResults) return;
-    const allIds = scanResults.items.map((i) => i.id);
-    if (allIds.length === 0) return;
+    const itemsToClean = scanResults.items.filter((i) => selectedCategories.has(i.category));
+    if (itemsToClean.length === 0) return;
 
     setCleaning(true);
     try {
       const result = await invoke<{ itemsCleaned: number; bytesFreed: number }>("clean_items", {
-        itemIds: allIds,
+        itemIds: itemsToClean.map((i) => i.id),
         permanent: settings.deleteMode === "permanent",
       });
       addToast({
@@ -282,13 +344,18 @@ export default function Dashboard() {
         title: "Clean complete",
         description: `Removed ${result.itemsCleaned} items (${formatBytes(result.bytesFreed)})`,
       });
-      // Backend removes cleaned items from scan state cache; pull the updated state
       const cached = await invoke<ScanResults | null>("get_scan_results");
       if (cached && cached.items.length > 0) {
         setScanResults(cached);
+        const remaining = ALL_CATEGORIES.filter((cat) => {
+          const r = cached.byCategory[cat];
+          return r && r.itemCount > 0;
+        });
+        setSelectedCategories(new Set(remaining));
       } else {
         setScanResults(null);
         setScanStatus("idle");
+        setSelectedCategories(new Set());
       }
     } catch (e) {
       addToast({ type: "error", title: "Clean failed", description: String(e) });
@@ -297,7 +364,24 @@ export default function Dashboard() {
     }
   }
 
+  function toggleCategory(cat: ScanCategory) {
+    setSelectedCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(cat)) next.delete(cat);
+      else next.add(cat);
+      return next;
+    });
+  }
+
   const healthScore = systemStats?.healthScore ?? 0;
+
+  // Compute selected bytes for Clean All button
+  const selectedItems = scanStatus === "complete" && scanResults
+    ? scanResults.items.filter((i) => selectedCategories.has(i.category))
+    : [];
+  const selectedBytes = selectedItems.reduce((s, i) => s + i.sizeBytes, 0);
+
+  const showCheckbox = scanStatus === "complete" && scanResults !== null;
 
   return (
     <div className="flex flex-col h-full">
@@ -308,7 +392,9 @@ export default function Dashboard() {
           progress={scanProgress}
           progressPct={progressPct}
           results={scanResults}
+          accumulatedBytes={accumulatedBytes}
           onScan={handleScan}
+          onStop={handleStop}
         />
 
         {/* Health score */}
@@ -331,7 +417,7 @@ export default function Dashboard() {
         )}
 
         {/* Clean All button after scan completes */}
-        {scanStatus === "complete" && scanResults && scanResults.items.length > 0 && (
+        {scanStatus === "complete" && scanResults && selectedItems.length > 0 && (
           <Button
             variant="danger"
             size="sm"
@@ -339,7 +425,7 @@ export default function Dashboard() {
             onClick={handleCleanAll}
             className="mt-4"
           >
-            Clean All ({formatBytes(scanResults.totalBytes)})
+            Clean Selected ({formatBytes(selectedBytes)})
           </Button>
         )}
       </div>
@@ -352,7 +438,7 @@ export default function Dashboard() {
             !scanResults && "opacity-50"
           )}
         >
-          Scan Results
+          {showCheckbox ? "Deselect categories to skip cleaning" : "Scan Results"}
         </div>
         <div className="grid grid-cols-2 gap-2">
           {ALL_CATEGORIES.map((cat) => (
@@ -363,6 +449,9 @@ export default function Dashboard() {
               scanStatus={scanStatus}
               currentCategory={scanProgress?.category ?? null}
               completedCategories={completedCategories}
+              isSelected={selectedCategories.has(cat)}
+              showCheckbox={showCheckbox}
+              onToggleSelect={() => toggleCategory(cat)}
             />
           ))}
         </div>
