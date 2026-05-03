@@ -54,6 +54,21 @@ pub async fn clean_items(
         if let Some(scan_results) = lock.as_mut() {
             scan_results.items.retain(|item| !item_ids.contains(&item.id));
             scan_results.total_bytes = scan_results.items.iter().map(|i| i.size_bytes).sum();
+
+            // Rebuild by_category after removal
+            let mut by_category = std::collections::HashMap::new();
+            for item in &scan_results.items {
+                let key = serde_json::to_string(&item.category)
+                    .unwrap_or_default()
+                    .trim_matches('"')
+                    .to_string();
+                let entry = by_category
+                    .entry(key)
+                    .or_insert_with(|| crate::models::CategoryResult::default());
+                entry.item_count += 1;
+                entry.total_bytes += item.size_bytes;
+            }
+            scan_results.by_category = by_category;
         }
     }
 
@@ -153,19 +168,24 @@ pub async fn empty_trash() -> Result<CleanResult, AppError> {
         .filter(|p| p.exists())
         .collect();
 
-    // Collect all files in trash
-    let all_files: Vec<PathBuf> = paths
-        .iter()
-        .flat_map(|trash| {
-            walkdir::WalkDir::new(trash)
-                .into_iter()
-                .filter_map(|e| e.ok())
-                .filter(|e| e.file_type().is_file())
-                .map(|e| e.into_path())
-                .collect::<Vec<_>>()
-        })
-        .collect();
+    // Collect all top-level entries (files + dirs) from each trash bin
+    let mut all_entries: Vec<PathBuf> = Vec::new();
+    for trash in &paths {
+        let Ok(read) = std::fs::read_dir(trash) else { continue };
+        for entry in read.flatten() {
+            all_entries.push(entry.path());
+        }
+    }
+
+    if all_entries.is_empty() {
+        return Ok(CleanResult {
+            success: true,
+            items_cleaned: 0,
+            bytes_freed: 0,
+            errors: vec![],
+        });
+    }
 
     let cleaner = FileCleaner::new();
-    cleaner.clean(&all_files, true).await // Permanently delete from trash
+    cleaner.clean(&all_entries, true).await // Permanently delete from trash
 }

@@ -34,7 +34,11 @@ impl FileCleaner {
                 continue;
             }
 
-            let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+            let size = if path.is_dir() {
+                crate::scanner::total_size(path)
+            } else {
+                std::fs::metadata(path).map(|m| m.len()).unwrap_or(0)
+            };
 
             let result = if permanent {
                 remove_permanently(path)
