@@ -4,37 +4,37 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Base surfaces
+        // Base surfaces — resolved via CSS custom properties for theme switching
         bg: {
-          base: "#0A0C10",
-          surface: "#0F1219",
-          elevated: "#161B24",
-          overlay: "#1C2333",
+          base: "var(--color-bg-base)",
+          surface: "var(--color-bg-surface)",
+          elevated: "var(--color-bg-elevated)",
+          overlay: "var(--color-bg-overlay)",
         },
         // Borders
         border: {
-          subtle: "#1F2733",
-          default: "#2A3444",
-          strong: "#3A4A5E",
+          subtle: "var(--color-border-subtle)",
+          default: "var(--color-border-default)",
+          strong: "var(--color-border-strong)",
         },
         // Text
         text: {
-          primary: "#E8EDF5",
-          secondary: "#8A97AA",
-          muted: "#4A5568",
+          primary: "var(--color-text-primary)",
+          secondary: "var(--color-text-secondary)",
+          muted: "var(--color-text-muted)",
         },
-        // Accent — Electric Teal
+        // Accent
         accent: {
-          DEFAULT: "#00D4AA",
-          dim: "#00D4AA22",
-          hover: "#00EAC0",
+          DEFAULT: "var(--color-accent)",
+          dim: "var(--color-accent-dim)",
+          hover: "var(--color-accent-hover)",
         },
-        // Semantic
+        // Semantic — same values in both themes, kept as-is for opacity modifier support
         success: "#22C987",
         warning: "#F59E0B",
         danger: "#EF4444",
         info: "#60A5FA",
-        // Feature category colors
+        // Feature category colors — decorative, don't change with theme
         junk: "#F59E0B",
         trash: "#EF4444",
         files: "#8B5CF6",
@@ -97,6 +97,7 @@ export default {
         "spin-slow": "spin 3s linear infinite",
         "pulse-slow": "pulse 3s ease-in-out infinite",
         "scan-ring": "scanRing 1.5s ease-in-out infinite",
+        "scan-pulse": "scanPulse 1.2s ease-in-out infinite",
       },
       keyframes: {
         fadeUp: {
@@ -114,6 +115,10 @@ export default {
         scanRing: {
           "0%, 100%": { opacity: "0.4" },
           "50%": { opacity: "1" },
+        },
+        scanPulse: {
+          "0%, 100%": { boxShadow: "0 0 0px transparent" },
+          "50%": { boxShadow: "0 0 12px var(--scan-pulse-color, rgba(0,212,170,0.3))" },
         },
       },
     },

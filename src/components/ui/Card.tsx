@@ -11,9 +11,10 @@ interface CardProps {
   accentColor?: string;
   onClick?: () => void;
   interactive?: boolean;
+  style?: React.CSSProperties;
 }
 
-export function Card({ children, className, accentColor, onClick, interactive }: CardProps) {
+export function Card({ children, className, accentColor, onClick, interactive, style }: CardProps) {
   return (
     <div
       onClick={onClick}
@@ -22,9 +23,10 @@ export function Card({ children, className, accentColor, onClick, interactive }:
         interactive && "cursor-pointer transition-all duration-150 hover:border-border-default hover:bg-bg-elevated",
         className
       )}
-      style={accentColor ? {
-        borderLeft: `2px solid ${accentColor}`,
-      } : undefined}
+      style={{
+        ...(accentColor ? { borderLeft: `2px solid ${accentColor}` } : {}),
+        ...style,
+      }}
     >
       {children}
     </div>

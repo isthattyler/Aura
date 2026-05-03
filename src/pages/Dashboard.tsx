@@ -123,15 +123,25 @@ function ScanRing({
 function CategoryCard({
   category,
   results,
+  scanStatus,
+  currentCategory,
+  completedCategories,
 }: {
   category: ScanCategory;
   results: ScanResults | null;
+  scanStatus: string;
+  currentCategory: ScanCategory | null;
+  completedCategories: Set<ScanCategory>;
 }) {
   const setCurrentPage = useAppStore((s) => s.setCurrentPage);
   const Icon = CATEGORY_ICONS[category];
   const color = CATEGORY_COLORS[category];
   const catResult = results?.byCategory[category];
   const hasResults = catResult && catResult.itemCount > 0;
+
+  const isScanning = scanStatus === "scanning" && currentCategory === category;
+  const isCompleted = scanStatus === "scanning" && completedCategories.has(category);
+  const isPending = scanStatus === "scanning" && !isScanning && !isCompleted;
 
   const pageMap: Record<ScanCategory, string> = {
     system_junk: "system_junk",
@@ -146,24 +156,48 @@ function CategoryCard({
 
   return (
     <Card
-      accentColor={hasResults ? color : undefined}
+      accentColor={
+        (hasResults || isCompleted || isScanning) ? color : undefined
+      }
       interactive
       onClick={() => setCurrentPage(pageMap[category] as never)}
-      className="group"
+      className={clsx(
+        "group",
+        isScanning && "animate-scan-pulse",
+        isPending && "opacity-50",
+      )}
+      style={
+        isScanning
+          ? { borderLeft: `2px solid ${color}`, ["--scan-pulse-color" as string]: `${color}40` }
+          : undefined
+      }
     >
       <div className="flex items-center gap-3">
         <div
-          className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+          className={clsx(
+            "w-8 h-8 rounded-lg flex items-center justify-center shrink-0",
+            isScanning && "animate-pulse",
+          )}
           style={{ backgroundColor: `${color}20`, border: `1px solid ${color}30` }}
         >
-          <Icon size={15} style={{ color }} strokeWidth={1.8} />
+          {isCompleted && !isScanning ? (
+            <span style={{ color, fontSize: 13, fontWeight: 700 }}>&#10003;</span>
+          ) : (
+            <Icon size={15} style={{ color }} strokeWidth={1.8} />
+          )}
         </div>
         <div className="flex-1 min-w-0">
           <div className="text-[12px] font-medium text-text-primary">{categoryLabel(category)}</div>
           <div className="text-[11px] font-mono text-text-muted mt-0.5">
-            {!results && "—"}
-            {results && !hasResults && "Nothing found"}
-            {hasResults && (
+            {isScanning && (
+              <span className="text-accent">Scanning…</span>
+            )}
+            {isCompleted && !results && (
+              <span style={{ color }}>Done</span>
+            )}
+            {!isScanning && !isCompleted && !results && "—"}
+            {!isScanning && results && !hasResults && "Nothing found"}
+            {!isScanning && hasResults && (
               <span style={{ color }}>
                 {formatBytes(catResult.totalBytes)}
               </span>
@@ -322,7 +356,14 @@ export default function Dashboard() {
         </div>
         <div className="grid grid-cols-2 gap-2">
           {ALL_CATEGORIES.map((cat) => (
-            <CategoryCard key={cat} category={cat} results={scanResults} />
+            <CategoryCard
+              key={cat}
+              category={cat}
+              results={scanResults}
+              scanStatus={scanStatus}
+              currentCategory={scanProgress?.category ?? null}
+              completedCategories={completedCategories}
+            />
           ))}
         </div>
       </div>
