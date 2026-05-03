@@ -172,6 +172,22 @@ export default function LargeFiles() {
 
         {scanned && items.length > 0 && (
           <div className="bg-bg-surface border border-border-subtle rounded-xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-2 border-b border-border-subtle bg-bg-elevated/50">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => items.forEach((i) => { if (!selectedItemIds.has(i.id)) toggleItemSelection(i.id); })}
+                  className="text-[10px] font-medium text-accent hover:text-accent-hover transition-colors"
+                >
+                  Select All
+                </button>
+                <button
+                  onClick={() => items.forEach((i) => { if (selectedItemIds.has(i.id)) toggleItemSelection(i.id); })}
+                  className="text-[10px] font-medium text-text-muted hover:text-text-secondary transition-colors"
+                >
+                  Uncheck All
+                </button>
+              </div>
+            </div>
             <div className="flex items-center gap-4 px-4 py-2.5 border-b border-border-subtle bg-bg-elevated/50">
               <div className="w-4" />
               <SortHeader label="Name" sort="name" />

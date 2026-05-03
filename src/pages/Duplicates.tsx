@@ -95,8 +95,25 @@ export default function Duplicates() {
 
         {scanned && (
           <div className="space-y-4">
+            {items.length > 0 && (
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => items.forEach((i) => { if (!selectedItemIds.has(i.id)) toggleItemSelection(i.id); })}
+                  className="text-[10px] font-medium text-accent hover:text-accent-hover transition-colors"
+                >
+                  Select All
+                </button>
+                <button
+                  onClick={() => items.forEach((i) => { if (selectedItemIds.has(i.id)) toggleItemSelection(i.id); })}
+                  className="text-[10px] font-medium text-text-muted hover:text-text-secondary transition-colors"
+                >
+                  Uncheck All
+                </button>
+              </div>
+            )}
             {groups.map(([hash, group]) => {
               const groupBytes = group.reduce((s, i) => s + (i.safe ? i.sizeBytes : 0), 0);
+              const allSelected = group.every((i) => selectedItemIds.has(i.id));
               return (
                 <Card key={hash} accentColor={color}>
                   <div className="flex items-center justify-between mb-3">
@@ -108,9 +125,15 @@ export default function Duplicates() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => group.forEach((i) => !selectedItemIds.has(i.id) && toggleItemSelection(i.id))}
+                      onClick={() => {
+                        if (allSelected) {
+                          group.forEach((i) => { if (selectedItemIds.has(i.id)) toggleItemSelection(i.id); });
+                        } else {
+                          group.forEach((i) => { if (!selectedItemIds.has(i.id)) toggleItemSelection(i.id); });
+                        }
+                      }}
                     >
-                      Select all
+                      {allSelected ? "Uncheck all" : "Select all"}
                     </Button>
                   </div>
 

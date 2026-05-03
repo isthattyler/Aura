@@ -145,6 +145,22 @@ export default function SystemJunk() {
 
         {scanned && (
           <div className="space-y-4">
+            {items.length > 0 && (
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => items.forEach((i) => { if (!selectedItemIds.has(i.id)) toggleItemSelection(i.id); })}
+                  className="text-[10px] font-medium text-accent hover:text-accent-hover transition-colors"
+                >
+                  Select All
+                </button>
+                <button
+                  onClick={() => items.forEach((i) => { if (selectedItemIds.has(i.id)) toggleItemSelection(i.id); })}
+                  className="text-[10px] font-medium text-text-muted hover:text-text-secondary transition-colors"
+                >
+                  Uncheck All
+                </button>
+              </div>
+            )}
             {groups.map((group) => (
               group.items.length > 0 && (
                 <Card key={group.key} accentColor={color}>

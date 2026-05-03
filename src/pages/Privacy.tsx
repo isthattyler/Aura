@@ -149,6 +149,23 @@ export default function Privacy() {
               </div>
             )}
 
+            {browserItems.length > 0 && (
+              <div className="flex items-center gap-3 mb-3">
+                <button
+                  onClick={() => browserItems.forEach((i) => { if (!selectedItemIds.has(i.id)) toggleItemSelection(i.id); })}
+                  className="text-[10px] font-medium text-accent hover:text-accent-hover transition-colors"
+                >
+                  Select All
+                </button>
+                <button
+                  onClick={() => browserItems.forEach((i) => { if (selectedItemIds.has(i.id)) toggleItemSelection(i.id); })}
+                  className="text-[10px] font-medium text-text-muted hover:text-text-secondary transition-colors"
+                >
+                  Uncheck All
+                </button>
+              </div>
+            )}
+
             <div className="space-y-2">
               {browserItems.map((item) => (
                 <Card key={item.id} accentColor={color}>
