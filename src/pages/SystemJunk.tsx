@@ -30,9 +30,9 @@ export default function SystemJunk() {
   // Use cached Smart Scan results if available
   useEffect(() => {
     if (scanStatus === "complete" && scanResults) {
-      const cached = scanResults.byCategory.system_junk;
-      if (cached && cached.items.length > 0) {
-        setItems(cached.items);
+      const cachedItems = scanResults.items.filter((i) => i.category === "system_junk");
+      if (cachedItems.length > 0) {
+        setItems(cachedItems);
         setScanned(true);
       }
     }

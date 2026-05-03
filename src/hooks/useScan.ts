@@ -13,9 +13,9 @@ export function useScanCategory(category: ScanCategory) {
   // On mount, use cached Smart Scan results if available
   useEffect(() => {
     if (scanStatus === "complete" && scanResults) {
-      const cached = scanResults.byCategory[category];
-      if (cached && cached.items.length > 0) {
-        setItems(cached.items);
+      const cachedItems = scanResults.items.filter((i) => i.category === category);
+      if (cachedItems.length > 0) {
+        setItems(cachedItems);
         setScanned(true);
       }
     }

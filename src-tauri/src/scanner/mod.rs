@@ -111,7 +111,10 @@ impl ScanOrchestrator {
         // Build per-category summary
         let mut by_category = std::collections::HashMap::new();
         for item in &all_items {
-            let key = format!("{:?}", item.category).to_lowercase();
+            let key = serde_json::to_string(&item.category)
+                .unwrap_or_default()
+                .trim_matches('"')
+                .to_string();
             let entry = by_category
                 .entry(key)
                 .or_insert(CategoryResult::default());

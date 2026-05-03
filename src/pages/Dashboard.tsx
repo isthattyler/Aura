@@ -37,11 +37,13 @@ const ALL_CATEGORIES: ScanCategory[] = [
 function ScanRing({
   status,
   progress,
+  progressPct,
   results,
   onScan,
 }: {
   status: string;
   progress: ScanProgress | null;
+  progressPct: number;
   results: ScanResults | null;
   onScan: () => void;
 }) {
@@ -60,7 +62,7 @@ function ScanRing({
         )}
 
         <ProgressRing
-          value={hasResults ? Math.min(100, (totalBytes / (500 * 1024 * 1024)) * 100) : 0}
+          value={status === "scanning" ? progressPct : hasResults ? 100 : 0}
           size={180}
           strokeWidth={7}
           glow={hasResults !== false}
@@ -194,14 +196,21 @@ export default function Dashboard() {
     settings,
   } = useAppStore();
   const [cleaning, setCleaning] = useState(false);
+  const [completedCategories, setCompletedCategories] = useState<Set<ScanCategory>>(new Set());
+
+  const progressPct = Math.round((completedCategories.size / ALL_CATEGORIES.length) * 100);
 
   async function handleScan() {
     setScanStatus("scanning");
     setScanProgress(null);
     setScanResults(null);
+    setCompletedCategories(new Set());
 
     const unlisten = await listen<ScanProgress>("scan_progress", (e) => {
       setScanProgress(e.payload);
+      if (e.payload.phase === "complete") {
+        setCompletedCategories((prev) => new Set(prev).add(e.payload.category));
+      }
     });
 
     try {
@@ -263,6 +272,7 @@ export default function Dashboard() {
         <ScanRing
           status={scanStatus}
           progress={scanProgress}
+          progressPct={progressPct}
           results={scanResults}
           onScan={handleScan}
         />

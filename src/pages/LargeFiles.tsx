@@ -26,9 +26,9 @@ export default function LargeFiles() {
   // Use cached Smart Scan results if available
   useEffect(() => {
     if (scanStatus === "complete" && scanResults) {
-      const cached = scanResults.byCategory.large_files;
-      if (cached && cached.items.length > 0) {
-        setItems(cached.items);
+      const cachedItems = scanResults.items.filter((i) => i.category === "large_files");
+      if (cachedItems.length > 0) {
+        setItems(cachedItems);
         setScanned(true);
       }
     }
