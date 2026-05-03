@@ -224,7 +224,7 @@ export interface AppSettings {
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  deleteMode: "trash",
+  deleteMode: "permanent",
   largeFileSizeThresholdMb: 50,
   largeFileAgeThresholdDays: 365,
   scanOnStartup: false,
