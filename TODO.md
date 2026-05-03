@@ -54,7 +54,7 @@ Priority levels: 🔴 Critical · 🟡 High · 🟢 Medium · ⚪ Low / Nice-to-
   - [x] Exclude system dirs (walks only home dir + protected_paths filter)
 - [x] 🟡 `src/scanner/duplicates.rs`
   - [x] Size-bucketing pre-filter (skip files with unique sizes)
-  - [x] SHA-256 hash comparison
+  - [x] xxHash3 hash comparison (via rayon for parallel hashing)
   - [x] Group duplicates, keep newest/oldest (configurable)
   - [x] Report space recoverable per group
 - [x] 🟡 `src/scanner/privacy.rs`
@@ -158,6 +158,7 @@ Priority levels: 🔴 Critical · 🟡 High · 🟢 Medium · ⚪ Low / Nice-to-
 - [x] 🟢 Auto-updater config (tauri-plugin-updater in Cargo.toml + lib.rs + tauri.conf.json)
 - [x] ⚪ Dark/light theme toggle (Settings page with theme select; CSS variables for light mode)
 - [x] ⚪ Settings persistence (localStorage read/write in Zustand store)
+- [x] 🟡 Select All / Uncheck All per category (selectAllInCategory in store)
 - [ ] ⚪ Tray icon + background scan mode
 - [ ] ⚪ Scheduled scans (cron-like)
 - [ ] ⚪ Export scan report as PDF/CSV

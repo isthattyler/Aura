@@ -17,7 +17,7 @@
 │   │  Zustand (state)        │◄──►│  Scanner modules          │  │
 │   │  Tailwind CSS           │    │  Cleaner modules          │  │
 │   │  Lucide icons           │    │  Platform adapters        │  │
-│   │  react-window (virt.)   │    │  System APIs              │  │
+│   │                         │    │  System APIs              │  │
 │   └─────────────────────────┘    └───────────────────────────┘  │
 │                                           │                      │
 │                                  ┌────────▼──────────┐          │
@@ -150,22 +150,40 @@ AppStore {
 
   // Scan state
   scanStatus: 'idle' | 'scanning' | 'complete' | 'error'
-  scanResults: ScanResults
-  selectedItems: Set<string>
-  startScan: () => Promise<void>
-  cleanSelected: () => Promise<void>
+  scanProgress: ScanProgress | null
+  scanResults: ScanResults | null
+  selectedItemIds: Set<string>
+
+  // Scan UI state (persists across tab nav)
+  categoryBytes: Partial<Record<ScanCategory, number>>
+  completedCategories: Set<ScanCategory>
+  selectedCategories: Set<ScanCategory>
+
+  toggleItemSelection: (id: string) => void
+  selectAllInCategory: (category: string) => void
+  clearSelection: () => void
+
+  // Clean state
+  cleanResult: CleanResult | null
 
   // System stats (polled every 2s)
-  systemStats: SystemStats
+  systemStats: SystemStats | null
+
+  // Platform
+  platform: 'macos' | 'windows' | 'linux' | null
 
   // Toast queue
   toasts: Toast[]
-  addToast: (toast: Toast) => void
+  addToast: (toast: Omit<Toast, 'id'>) => void
   removeToast: (id: string) => void
 
   // Settings
   settings: AppSettings
   updateSettings: (patch: Partial<AppSettings>) => void
+
+  // UI state
+  isActionSheetOpen: boolean
+  setActionSheetOpen: (open: boolean) => void
 }
 ```
 
@@ -175,17 +193,7 @@ Client-side only — no URL routing. Navigation state held in Zustand. Page comp
 
 ### IPC Layer
 
-All Tauri calls go through a typed wrapper in `src/lib/tauri.ts`:
-
-```typescript
-// Typed invoke wrapper
-export async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T>
-
-// Event listener wrapper
-export function listen<T>(event: string, cb: (payload: T) => void): UnlistenFn
-```
-
-Scan progress is streamed via **Tauri events** (`emit` from Rust, `listen` in React) rather than polling.
+Tauri calls are made directly via `@tauri-apps/api/core` (`invoke`) and `@tauri-apps/api/event` (`listen`). Scan progress is streamed via **Tauri events** (`emit` from Rust, `listen` in React) rather than polling.
 
 ---
 
@@ -216,11 +224,17 @@ pub enum AppError {
 // src/scanner/mod.rs
 #[async_trait]
 pub trait Scanner: Send + Sync {
-    fn name(&self) -> &'static str;
     fn category(&self) -> ScanCategory;
-    async fn scan(&self, opts: &ScanOptions) -> Result<Vec<ScanItem>, AppError>;
+    async fn scan(
+        &self,
+        platform: &dyn PlatformPaths,
+        opts: &ScanOptions,
+        app: &AppHandle,
+    ) -> Result<Vec<ScanItem>, AppError>;
 }
 ```
+
+Scanners receive the platform abstraction and app handle directly for path resolution and event emission.
 
 Each scanner implementation (junk, trash, large files, etc.) implements this trait and is registered in the orchestrator.
 
@@ -246,15 +260,19 @@ pub fn current_platform() -> Box<dyn PlatformPaths> {
 
 ### Scan Flow
 
+Scanners run **sequentially** (one-at-a-time) via `tokio::spawn` to reduce I/O contention. Each scanner internally uses `spawn_blocking` for filesystem work.
+
 ```
 Frontend: invoke("start_scan", { categories: [...] })
          │
          ▼
 Rust: commands::scan::start_scan()
       │  Creates ScanOrchestrator
-      │  Spawns tokio::spawn for each Scanner
-      │  Each scanner emits progress events:
-      │    app.emit("scan_progress", ScanProgressEvent { ... })
+      │  For each scanner (sequential):
+      │    - Emits scan_progress { phase: Scanning }
+      │    - tokio::spawn → scanner internally uses spawn_blocking
+      │    - Emits scan_progress { phase: Complete, items, bytes }
+      │  Builds by_category summary from results
       │
       ▼
 Frontend: listen("scan_progress", handler)
@@ -267,16 +285,21 @@ Frontend: Updates store.scanResults → shows results page
 
 ### Clean Flow
 
+Items are resolved from cached scan results by ID. After deletion, the item is removed from the cache and `by_category` is rebuilt.
+
 ```
 Frontend: invoke("clean_items", { item_ids: [...] })
          │
          ▼
 Rust: commands::clean::clean_items()
+      │  Resolve IDs to paths from cached results
       │  Safety check: no system-critical paths
       │  For each item:
       │    - Write to undo log (path + metadata)
-      │    - Move to OS trash OR permanently delete (per settings)
+      │    - Permanently delete OR move to trash (per settings)
       │    - Emit progress event
+      │  Remove cleaned items from cache
+      │  Rebuild by_category from remaining items
       │
       ▼
 Frontend: listen("clean_progress", handler) → shows progress
@@ -297,10 +320,6 @@ Frontend: listen("clean_progress", handler) → shows progress
 | `zustand` | ^4.5 | State management |
 | `tailwindcss` | ^3.4 | Utility CSS |
 | `lucide-react` | ^0.400 | Icons |
-| `react-window` | ^1.8 | Virtualized lists |
-| `recharts` | ^2.12 | Disk usage charts |
-| `framer-motion` | ^11 | Animations |
-| `clsx` | ^2 | Conditional classnames |
 
 ### Backend (Cargo.toml)
 
@@ -311,7 +330,7 @@ Frontend: listen("clean_progress", handler) → shows progress
 | `serde` / `serde_json` | Serialization |
 | `thiserror` | Error types |
 | `walkdir` | Recursive directory traversal |
-| `sha2` | File hashing (duplicate detection) |
+| `xxhash-rust` | Fast file hashing (duplicate detection) |
 | `sysinfo` | CPU/RAM/disk stats |
 | `chrono` | File timestamps |
 | `regex` | Pattern matching for junk detection |
@@ -326,6 +345,7 @@ Frontend: listen("clean_progress", handler) → shows progress
 - **Allowlist** of Tauri APIs: only `invoke`, `event`, `window` used
 - **Path validation** in all Rust commands — rejects paths outside user home or known system dirs
 - **Undo log** written before every deletion to `~/.aura/undo_log.json`
+- **Permanent by default** (configurable to Trash in settings)
 - **Dry-run mode** available in settings — scans but never deletes
 
 ---

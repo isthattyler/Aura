@@ -15,12 +15,12 @@ Works on **macOS**, **Windows**, and **Linux**.
 | 🗑 **System Junk** | Caches, logs, temp files, language packs |
 | 🪣 **Trash Bins** | Multi-volume trash management |
 | 📁 **Large & Old Files** | Surface files you forgot about |
-| 📑 **Duplicates** | SHA-256 content-hash duplicate detection |
+| 📑 **Duplicates** | xxHash3 content-hash duplicate detection (parallel) |
 | 📲 **App Uninstaller** | Full removal including leftover files |
 | 🚀 **Startup Manager** | Control login items & launch agents |
 | 🔒 **Privacy** | Browser history, cache, cookies |
 | 💿 **Disk Space** | Visual disk usage treemap |
-| 🔧 **Maintenance** | Flush DNS, rebuild indexes, run scripts |
+| 🔧 **Maintenance** | Free up RAM, system upkeep |
 
 ---
 
@@ -40,10 +40,27 @@ Works on **macOS**, **Windows**, and **Linux**.
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) 20+
-- [pnpm](https://pnpm.io/) 9+
-- [Rust](https://rustup.rs/) stable
-- Tauri CLI: `cargo install tauri-cli --version "^2.0"`
+- **Rust** (stable) — install via [rustup](https://rustup.rs/):
+  ```bash
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+  ```
+  Verify with `rustc --version` and `cargo --version`.
+
+- **Node.js** 20+ — download from [nodejs.org](https://nodejs.org/) or use a version manager like `fnm` or `nvm`.
+
+- **pnpm** 9+ — install via npm (requires Node.js):
+  ```bash
+  npm install -g pnpm
+  ```
+  Verify with `pnpm --version`.
+
+- **Tauri CLI**:
+  ```bash
+  cargo install tauri-cli --version "^2.0"
+  ```
+
+- **System dependencies** (macOS):
+  - Xcode Command Line Tools: `xcode-select --install`
 
 ### Linux only
 
@@ -83,8 +100,7 @@ Aura never deletes files without:
 2. Writing an undo log to `~/.aura/undo_log.json`
 3. User confirmation via the Action Sheet
 
-By default, items are **moved to Trash** (not permanently deleted).  
-Permanent deletion can be enabled in Settings.
+By default, items are **permanently deleted** (configurable to Trash in Settings).
 
 ---
 

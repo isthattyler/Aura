@@ -30,7 +30,11 @@
 - **Frontend** (`src/`): `main.tsx` → `App.tsx` (layout shell + lazy page routing) → pages use hooks/`invoke` for data
 - **Backend** (`src-tauri/src/`): `main.rs` calls `aura_lib::run()` in `lib.rs`. Commands in `commands/`, scanners in `scanner/`, cleaners in `cleaner/`, platform adapters in `platform/`, shared structs in `models/`
 - Scan results stream via Tauri events (`scan_progress`, `scan_complete`, `scan_error`) — not polling
-- Safety: undo log at `~/.aura/undo_log.json`, protected-path deny list, trash-by-default
+- Safety: undo log at `~/.aura/undo_log.json`, protected-path deny list, permanent-by-default (configurable to trash)
+- **Smart Scan**: 5 scanners (junk, trash, large_files, duplicates, privacy) run sequentially via `tokio::spawn` + `spawn_blocking` — each scanner emits start/complete events. After cleaning, `by_category` is rebuilt from remaining items.
+- **Scanner internals**: Each scanner uses `spawn_blocking` internally. Duplicates scanner uses `rayon` + xxHash3 for parallel file hashing. Orchestrator runs scanners one-at-a-time to reduce I/O contention.
+- **clean_items**: Resolves item IDs to paths from cached scan results, runs safety checks, writes undo log, deletes files (or directories recursively), then removes cleaned items from the cache and rebuilds `by_category`.
+- **empty_trash**: Collects top-level entries (files + directories) from trash paths and permanently deletes them. Uses `FileCleaner` which handles recursive directory removal. Directory sizes are computed via `total_size()` (recursive walk) instead of `metadata.len()`.
 
 ## Rust backend structure
 
