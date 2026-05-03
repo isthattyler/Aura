@@ -1,6 +1,5 @@
 use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 use async_trait::async_trait;
-use futures::future::join_all;
 use tauri::{AppHandle, Emitter};
 use crate::error::AppError;
 use crate::models::{ScanCategory, ScanItem, ScanOptions, ScanProgress, ScanPhase, ScanResults, CategoryResult};
@@ -33,18 +32,18 @@ pub trait Scanner: Send + Sync {
 // ─────────────────────────────────────────
 
 pub struct ScanOrchestrator {
-    scanners: Vec<Box<dyn Scanner>>,
+    scanners: Vec<Arc<dyn Scanner>>,
 }
 
 impl ScanOrchestrator {
     pub fn new() -> Self {
         Self {
             scanners: vec![
-                Box::new(junk::JunkScanner),
-                Box::new(trash::TrashScanner),
-                Box::new(large_files::LargeFileScanner),
-                Box::new(duplicates::DuplicateScanner),
-                Box::new(privacy::PrivacyScanner),
+                Arc::new(junk::JunkScanner),
+                Arc::new(trash::TrashScanner),
+                Arc::new(large_files::LargeFileScanner),
+                Arc::new(duplicates::DuplicateScanner),
+                Arc::new(privacy::PrivacyScanner),
             ],
         }
     }
@@ -76,28 +75,41 @@ impl ScanOrchestrator {
             }
         }
 
-        // Run all requested scanners concurrently via join_all
-        let futures: Vec<_> = self
-            .scanners
-            .iter()
-            .filter(|s| categories.contains(&s.category()))
-            .map(|scanner| {
-                let cat = scanner.category();
-                let scan_opts = opts.clone();
-                let platform = Arc::clone(&platform);
-                let app = app.clone();
-                let cancelled = Arc::clone(&cancelled);
-                async move {
-                    if cancelled.load(Ordering::Relaxed) {
-                        return (cat, Ok(Vec::new()));
-                    }
-                    let result = scanner.scan(platform.as_ref(), &scan_opts, &app).await;
-                    (cat, result)
-                }
-            })
-            .collect();
+        // Spawn each scanner as a dedicated Tokio task so the runtime
+        // can interleave them and the event loop stays responsive
+        let mut handles: Vec<
+            tokio::task::JoinHandle<(ScanCategory, Result<Vec<ScanItem>, AppError>)>,
+        > = Vec::new();
 
-        for (cat, result) in join_all(futures).await {
+        for scanner in &self.scanners {
+            let cat = scanner.category();
+            if !categories.contains(&cat) {
+                continue;
+            }
+
+            let scanner = Arc::clone(scanner);
+            let scan_opts = opts.clone();
+            let platform = Arc::clone(&platform);
+            let app = app.clone();
+            let cancelled = Arc::clone(&cancelled);
+
+            handles.push(tokio::spawn(async move {
+                if cancelled.load(Ordering::Relaxed) {
+                    return (cat, Ok(Vec::new()));
+                }
+                let result = scanner.scan(platform.as_ref(), &scan_opts, &app).await;
+                (cat, result)
+            }));
+        }
+
+        for handle in handles {
+            let (cat, result) = match handle.await {
+                Ok(res) => res,
+                Err(e) => {
+                    log::error!("Scanner task panicked: {}", e);
+                    continue;
+                }
+            };
             match result {
                 Ok(items) => {
                     let bytes: u64 = items.iter().map(|i| i.size_bytes).sum();
