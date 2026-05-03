@@ -1,12 +1,18 @@
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use tauri::AppHandle;
-use sha2::{Sha256, Digest};
+use std::sync::atomic::Ordering;
+use tauri::{AppHandle, Manager};
+use xxhash_rust::xxh3::Xxh3;
+use rayon::prelude::*;
+use crate::commands::scan::ScanState;
 use crate::error::AppError;
 use crate::models::{ScanCategory, ScanItem, ScanOptions};
 use crate::platform::PlatformPaths;
 use super::{Scanner, make_item};
+
+const CANCEL_CHECK_INTERVAL: u64 = 2000;
+const MIN_FILE_SIZE: u64 = 64 * 1024; // Skip files smaller than 64 KB
 
 pub struct DuplicateScanner;
 
@@ -20,17 +26,18 @@ impl Scanner for DuplicateScanner {
         &self,
         platform: &dyn PlatformPaths,
         _opts: &ScanOptions,
-        _app: &AppHandle,
+        app: &AppHandle,
     ) -> Result<Vec<ScanItem>, AppError> {
         let Some(home) = platform.home_dir() else {
             return Err(AppError::NotFound("Home directory not found".into()));
         };
 
         let protected = platform.protected_paths();
-        let min_size: u64 = 64 * 1024; // Ignore files < 64 KB
+        let cancelled = app.state::<ScanState>().cancelled.clone();
 
-        // Step 1: Collect all candidate files grouped by size
+        // ── Step 1: Walk home directory, group files by size ──
         let mut by_size: HashMap<u64, Vec<PathBuf>> = HashMap::new();
+        let mut file_count: u64 = 0;
 
         for entry in walkdir::WalkDir::new(&home)
             .follow_links(false)
@@ -38,66 +45,119 @@ impl Scanner for DuplicateScanner {
             .filter_map(|e| e.ok())
             .filter(|e| e.file_type().is_file())
         {
+            if file_count % CANCEL_CHECK_INTERVAL == 0
+                && cancelled.load(Ordering::Relaxed)
+            {
+                return Ok(Vec::new());
+            }
+            file_count += 1;
+
             let path = entry.path().to_path_buf();
-            if protected.iter().any(|p| path.starts_with(p)) { continue; }
+            if protected.iter().any(|p| path.starts_with(p)) {
+                continue;
+            }
 
             let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
-            if size < min_size { continue; }
+            if size < MIN_FILE_SIZE {
+                continue;
+            }
 
             by_size.entry(size).or_default().push(path);
         }
 
-        // Step 2: For size groups with >1 file, hash them
-        let mut by_hash: HashMap<String, Vec<PathBuf>> = HashMap::new();
+        if cancelled.load(Ordering::Relaxed) {
+            return Ok(Vec::new());
+        }
 
-        for (_, paths) in by_size.into_iter().filter(|(_, v)| v.len() > 1) {
-            for path in paths {
-                match hash_file(&path) {
-                    Ok(hash) => { by_hash.entry(hash).or_default().push(path); }
-                    Err(_) => { /* skip unreadable files */ }
-                }
+        // ── Step 2: Collect all paths from size groups with more than one entry ──
+        let mut to_hash: Vec<PathBuf> = Vec::new();
+        for paths in by_size.values() {
+            if paths.len() > 1 {
+                to_hash.extend(paths.iter().cloned());
             }
         }
 
-        // Step 3: Build ScanItems for all duplicates (keep newest, flag rest)
+        if to_hash.is_empty() || cancelled.load(Ordering::Relaxed) {
+            return Ok(Vec::new());
+        }
+
+        // ── Step 3: Hash all candidates in parallel via rayon + spawn_blocking ──
+        let cancelled2 = cancelled.clone();
+
+        let hash_results: Vec<(PathBuf, u64)> =
+            tokio::task::spawn_blocking(move || {
+                to_hash
+                    .par_iter()
+                    .filter_map(|path| {
+                        if cancelled2.load(Ordering::Relaxed) {
+                            return None;
+                        }
+                        hash_file(path).ok().map(|h| (path.clone(), h))
+                    })
+                    .collect()
+            })
+            .await
+            .map_err(|e| AppError::Io(format!("Hashing task panicked: {}", e)))?;
+
+        if cancelled.load(Ordering::Relaxed) {
+            return Ok(Vec::new());
+        }
+
+        // ── Step 4: Group by hash, skip singletons ──
+        let mut by_hash: HashMap<u64, Vec<PathBuf>> = HashMap::new();
+        for (path, hash) in hash_results {
+            by_hash.entry(hash).or_default().push(path);
+        }
+
+        // ── Step 5: Build ScanItems — keep newest, flag duplicates as safe to delete ──
         let mut items = Vec::new();
 
-        for (hash, mut paths) in by_hash.into_iter().filter(|(_, v)| v.len() > 1) {
-            // Sort by modified time — keep the newest, mark rest as duplicates
+        for (hash, mut paths) in by_hash {
+            if paths.len() < 2 {
+                continue;
+            }
+
             paths.sort_by(|a, b| {
-                let mt_a = std::fs::metadata(a).and_then(|m| m.modified()).ok();
-                let mt_b = std::fs::metadata(b).and_then(|m| m.modified()).ok();
+                let mt_a = std::fs::metadata(a)
+                    .and_then(|m| m.modified())
+                    .ok();
+                let mt_b = std::fs::metadata(b)
+                    .and_then(|m| m.modified())
+                    .ok();
                 mt_b.cmp(&mt_a) // newest first
             });
 
-            // First entry is "keep", rest are duplicates to remove
+            let group_id = format!("{:016x}", hash);
+
             for (i, path) in paths.iter().enumerate() {
                 let mut item = make_item(path, ScanCategory::Duplicates, "duplicate");
-                item.group_id = Some(hash.clone());
-                item.safe = i > 0; // Only extras are safe to delete
+                item.group_id = Some(group_id.clone());
+                item.safe = i > 0; // first (newest) is the keeper
                 items.push(item);
             }
         }
 
-        // Sort by group so duplicates appear together
+        // Sort by group so duplicates appear together in the UI
         items.sort_by(|a, b| a.group_id.cmp(&b.group_id));
 
         Ok(items)
     }
 }
 
-fn hash_file(path: &std::path::Path) -> Result<String, std::io::Error> {
+fn hash_file(path: &std::path::Path) -> Result<u64, std::io::Error> {
     use std::io::Read;
 
     let mut file = std::fs::File::open(path)?;
-    let mut hasher = Sha256::new();
-    let mut buffer = [0u8; 65536]; // 64 KB chunks
+    let mut hasher = Xxh3::new();
+    let mut buffer = [0u8; 65536];
 
     loop {
         let n = file.read(&mut buffer)?;
-        if n == 0 { break; }
+        if n == 0 {
+            break;
+        }
         hasher.update(&buffer[..n]);
     }
 
-    Ok(hex::encode(hasher.finalize()))
+    Ok(hasher.digest())
 }
