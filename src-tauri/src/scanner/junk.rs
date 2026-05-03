@@ -1,5 +1,8 @@
 use async_trait::async_trait;
-use tauri::AppHandle;
+use std::path::PathBuf;
+use std::sync::atomic::Ordering;
+use tauri::{AppHandle, Manager};
+use crate::commands::scan::ScanState;
 use crate::error::AppError;
 use crate::models::{ScanCategory, ScanItem, ScanOptions};
 use crate::platform::PlatformPaths;
@@ -17,45 +20,64 @@ impl Scanner for JunkScanner {
         &self,
         platform: &dyn PlatformPaths,
         _opts: &ScanOptions,
-        _app: &AppHandle,
+        app: &AppHandle,
     ) -> Result<Vec<ScanItem>, AppError> {
-        let mut items = Vec::new();
+        // Pre-fetch owned data from platform (needed before spawn_blocking)
+        let cache_dirs: Vec<PathBuf> = platform.cache_dirs();
+        let log_dirs: Vec<PathBuf> = platform.log_dirs();
+        let temp_dirs: Vec<PathBuf> = platform.temp_dirs();
+        let cancelled = app.state::<ScanState>().cancelled.clone();
 
-        items.extend(scan_caches(platform));
-        items.extend(scan_logs(platform));
-        items.extend(scan_temp(platform));
+        tokio::task::spawn_blocking(move || {
+            if cancelled.load(Ordering::Relaxed) {
+                return Ok(Vec::new());
+            }
 
-        #[cfg(target_os = "macos")]
-        {
-            items.extend(scan_language_packs());
-            items.extend(scan_broken_plists());
-            items.extend(scan_ios_backups());
-            items.extend(scan_xcode_data());
-        }
+            let mut items = Vec::new();
 
-        Ok(items)
+            scan_caches(&cache_dirs, &mut items);
+            if cancelled.load(Ordering::Relaxed) { return Ok(items); }
+
+            scan_logs(&log_dirs, &mut items);
+            if cancelled.load(Ordering::Relaxed) { return Ok(items); }
+
+            scan_temp(&temp_dirs, &mut items);
+
+            #[cfg(target_os = "macos")]
+            {
+                if cancelled.load(Ordering::Relaxed) { return Ok(items); }
+                scan_language_packs(&mut items);
+                if cancelled.load(Ordering::Relaxed) { return Ok(items); }
+                scan_broken_plists(&mut items);
+                if cancelled.load(Ordering::Relaxed) { return Ok(items); }
+                scan_ios_backups(&mut items);
+                if cancelled.load(Ordering::Relaxed) { return Ok(items); }
+                scan_xcode_data(&mut items);
+            }
+
+            Ok(items)
+        })
+        .await
+        .map_err(|e| AppError::Io(format!("Junk scan panicked: {}", e)))?
     }
 }
 
-fn scan_caches(platform: &dyn PlatformPaths) -> Vec<ScanItem> {
-    let mut items = Vec::new();
-    for dir in platform.cache_dirs() {
+fn scan_caches(dirs: &[PathBuf], items: &mut Vec<ScanItem>) {
+    for dir in dirs {
         if !dir.exists() { continue; }
-        for file in walk_collect(&dir) {
+        for file in walk_collect(dir) {
             let item = make_item(&file, ScanCategory::SystemJunk, "caches");
             if item.size_bytes > 0 {
                 items.push(item);
             }
         }
     }
-    items
 }
 
-fn scan_logs(platform: &dyn PlatformPaths) -> Vec<ScanItem> {
-    let mut items = Vec::new();
-    for dir in platform.log_dirs() {
+fn scan_logs(dirs: &[PathBuf], items: &mut Vec<ScanItem>) {
+    for dir in dirs {
         if !dir.exists() { continue; }
-        for file in walk_collect(&dir) {
+        for file in walk_collect(dir) {
             let ext = file.extension().and_then(|e| e.to_str()).unwrap_or("");
             if matches!(ext, "log" | "crash" | "asl" | "gz" | "bz2" | "txt") {
                 let item = make_item(&file, ScanCategory::SystemJunk, "logs");
@@ -65,14 +87,12 @@ fn scan_logs(platform: &dyn PlatformPaths) -> Vec<ScanItem> {
             }
         }
     }
-    items
 }
 
-fn scan_temp(platform: &dyn PlatformPaths) -> Vec<ScanItem> {
-    let mut items = Vec::new();
-    for dir in platform.temp_dirs() {
+fn scan_temp(dirs: &[PathBuf], items: &mut Vec<ScanItem>) {
+    for dir in dirs {
         if !dir.exists() { continue; }
-        for entry in walkdir::WalkDir::new(&dir)
+        for entry in walkdir::WalkDir::new(dir)
             .max_depth(2)
             .into_iter()
             .filter_map(|e| e.ok())
@@ -84,12 +104,10 @@ fn scan_temp(platform: &dyn PlatformPaths) -> Vec<ScanItem> {
             }
         }
     }
-    items
 }
 
 #[cfg(target_os = "macos")]
-fn scan_broken_plists() -> Vec<ScanItem> {
-    let mut items = Vec::new();
+fn scan_broken_plists(items: &mut Vec<ScanItem>) {
     let plist_dirs = vec![
         dirs::home_dir().map(|h| h.join("Library/Preferences")),
         dirs::home_dir().map(|h| h.join("Library/Containers")),
@@ -124,12 +142,10 @@ fn scan_broken_plists() -> Vec<ScanItem> {
             }
         }
     }
-    items
 }
 
 #[cfg(target_os = "macos")]
-fn scan_ios_backups() -> Vec<ScanItem> {
-    let mut items = Vec::new();
+fn scan_ios_backups(items: &mut Vec<ScanItem>) {
     if let Some(home) = dirs::home_dir() {
         let backup_dir = home.join("Library/Application Support/MobileSync/Backup");
         if backup_dir.exists() {
@@ -156,12 +172,10 @@ fn scan_ios_backups() -> Vec<ScanItem> {
             }
         }
     }
-    items
 }
 
 #[cfg(target_os = "macos")]
-fn scan_xcode_data() -> Vec<ScanItem> {
-    let mut items = Vec::new();
+fn scan_xcode_data(items: &mut Vec<ScanItem>) {
     if let Some(home) = dirs::home_dir() {
         // DerivedData
         let derived = home.join("Library/Developer/Xcode/DerivedData");
@@ -214,15 +228,12 @@ fn scan_xcode_data() -> Vec<ScanItem> {
             }
         }
     }
-    items
 }
 
 #[cfg(target_os = "macos")]
-fn scan_language_packs() -> Vec<ScanItem> {
+fn scan_language_packs(items: &mut Vec<ScanItem>) {
     use std::path::PathBuf;
 
-    let mut items = Vec::new();
-    // Get system language (simplified: assume English)
     let keep_langs = ["en", "en_US", "en_GB", "Base"];
 
     let app_dirs = vec![
@@ -234,7 +245,7 @@ fn scan_language_packs() -> Vec<ScanItem> {
         if !app_dir.exists() { continue; }
         let Ok(apps) = std::fs::read_dir(&app_dir) else { continue };
 
-        for app_entry in apps.flatten().take(50) { // limit to 50 apps
+        for app_entry in apps.flatten().take(50) {
             let resources = app_entry.path().join("Contents/Resources");
             if !resources.exists() { continue; }
             let Ok(res_entries) = std::fs::read_dir(&resources) else { continue };
@@ -248,7 +259,6 @@ fn scan_language_packs() -> Vec<ScanItem> {
                         .unwrap_or("")
                         .to_string();
                     if !keep_langs.iter().any(|&k| lang.starts_with(k)) {
-                        // Count size of this lproj dir
                         let size: u64 = walkdir::WalkDir::new(&path)
                             .into_iter()
                             .filter_map(|e| e.ok())
@@ -280,6 +290,4 @@ fn scan_language_packs() -> Vec<ScanItem> {
             }
         }
     }
-
-    items
 }

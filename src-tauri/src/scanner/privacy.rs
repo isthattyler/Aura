@@ -20,17 +20,24 @@ impl Scanner for PrivacyScanner {
         _opts: &ScanOptions,
         _app: &AppHandle,
     ) -> Result<Vec<ScanItem>, AppError> {
-        let mut items = Vec::new();
+        let browser_profiles: Vec<(String, PathBuf)> = platform.browser_profile_dirs();
+        let recent_docs: Vec<PathBuf> = platform.recent_docs_paths();
 
-        for (browser, profile_dir) in platform.browser_profile_dirs() {
-            items.extend(scan_browser(&browser, &profile_dir));
-        }
+        tokio::task::spawn_blocking(move || {
+            let mut items = Vec::new();
 
-        for path in platform.recent_docs_paths() {
-            items.extend(scan_recent_docs(&path));
-        }
+            for (browser, profile_dir) in &browser_profiles {
+                items.extend(scan_browser(browser, profile_dir));
+            }
 
-        Ok(items)
+            for path in &recent_docs {
+                items.extend(scan_recent_docs(path));
+            }
+
+            Ok(items)
+        })
+        .await
+        .map_err(|e| AppError::Io(format!("Privacy scan panicked: {}", e)))?
     }
 }
 

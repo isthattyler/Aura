@@ -1,5 +1,6 @@
 use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 use async_trait::async_trait;
+use futures::future::join_all;
 use tauri::{AppHandle, Emitter};
 use crate::error::AppError;
 use crate::models::{ScanCategory, ScanItem, ScanOptions, ScanProgress, ScanPhase, ScanResults, CategoryResult};
@@ -54,41 +55,56 @@ impl ScanOrchestrator {
         app: &AppHandle,
         cancelled: Arc<AtomicBool>,
     ) -> Result<ScanResults, AppError> {
-        let platform = current_platform();
+        let platform: Arc<dyn PlatformPaths> = current_platform().into();
+        let categories = opts.categories.clone();
         let mut all_items: Vec<ScanItem> = Vec::new();
 
+        // Emit scanning events for all requested categories
         for scanner in &self.scanners {
-            if cancelled.load(Ordering::SeqCst) {
-                break;
+            let cat = scanner.category();
+            if categories.contains(&cat) {
+                let _ = app.emit(
+                    "scan_progress",
+                    ScanProgress {
+                        category: cat.clone(),
+                        phase: ScanPhase::Scanning,
+                        items_found: 0,
+                        bytes_found: 0,
+                        current_path: None,
+                    },
+                );
             }
+        }
 
-            let category = scanner.category();
+        // Run all requested scanners concurrently via join_all
+        let futures: Vec<_> = self
+            .scanners
+            .iter()
+            .filter(|s| categories.contains(&s.category()))
+            .map(|scanner| {
+                let cat = scanner.category();
+                let scan_opts = opts.clone();
+                let platform = Arc::clone(&platform);
+                let app = app.clone();
+                let cancelled = Arc::clone(&cancelled);
+                async move {
+                    if cancelled.load(Ordering::Relaxed) {
+                        return (cat, Ok(Vec::new()));
+                    }
+                    let result = scanner.scan(platform.as_ref(), &scan_opts, &app).await;
+                    (cat, result)
+                }
+            })
+            .collect();
 
-            // Skip if not requested
-            if !opts.categories.contains(&category) {
-                continue;
-            }
-
-            // Emit scanning start event
-            let _ = app.emit(
-                "scan_progress",
-                ScanProgress {
-                    category: category.clone(),
-                    phase: ScanPhase::Scanning,
-                    items_found: 0,
-                    bytes_found: 0,
-                    current_path: None,
-                },
-            );
-
-            match scanner.scan(platform.as_ref(), opts, app).await {
+        for (cat, result) in join_all(futures).await {
+            match result {
                 Ok(items) => {
                     let bytes: u64 = items.iter().map(|i| i.size_bytes).sum();
-                    // Emit completion for this category
                     let _ = app.emit(
                         "scan_progress",
                         ScanProgress {
-                            category: category.clone(),
+                            category: cat.clone(),
                             phase: ScanPhase::Complete,
                             items_found: items.len(),
                             bytes_found: bytes,
@@ -98,12 +114,30 @@ impl ScanOrchestrator {
                     all_items.extend(items);
                 }
                 Err(AppError::Permission(_)) => {
-                    // Silently skip permission-denied paths
-                    log::warn!("Permission denied scanning {:?}", category);
+                    log::warn!("Permission denied scanning {:?}", cat);
+                    let _ = app.emit(
+                        "scan_progress",
+                        ScanProgress {
+                            category: cat,
+                            phase: ScanPhase::Complete,
+                            items_found: 0,
+                            bytes_found: 0,
+                            current_path: None,
+                        },
+                    );
                 }
                 Err(e) => {
-                    log::error!("Scanner {:?} failed: {}", category, e);
-                    // Continue scanning other categories
+                    log::error!("Scanner {:?} failed: {}", cat, e);
+                    let _ = app.emit(
+                        "scan_progress",
+                        ScanProgress {
+                            category: cat,
+                            phase: ScanPhase::Complete,
+                            items_found: 0,
+                            bytes_found: 0,
+                            current_path: None,
+                        },
+                    );
                 }
             }
         }

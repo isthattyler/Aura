@@ -20,36 +20,38 @@ impl Scanner for TrashScanner {
         _opts: &ScanOptions,
         _app: &AppHandle,
     ) -> Result<Vec<ScanItem>, AppError> {
-        let mut items = Vec::new();
+        let trash_paths: Vec<PathBuf> = platform.trash_paths();
 
-        for trash_path in platform.trash_paths() {
-            if !trash_path.exists() {
-                log::debug!("Trash path does not exist: {:?}", trash_path);
-                continue;
+        tokio::task::spawn_blocking(move || {
+            let mut items = Vec::new();
+
+            for trash_path in &trash_paths {
+                if !trash_path.exists() {
+                    continue;
+                }
+                let entries = collect_trash_entries(trash_path);
+                for (path, size) in entries {
+                    let mut item = make_item(&path, ScanCategory::Trash, "trash");
+                    item.size_bytes = size;
+                    item.safe = true;
+                    items.push(item);
+                }
             }
 
-            let entries = collect_trash_entries(&trash_path);
-            log::debug!("Trash path {:?}: found {} entries", trash_path, entries.len());
-
-            for (path, size) in entries {
-                let mut item = make_item(&path, ScanCategory::Trash, "trash");
-                item.size_bytes = size;
-                item.safe = true;
-                items.push(item);
+            #[cfg(target_os = "macos")]
+            {
+                items.extend(scan_volume_trash());
             }
-        }
 
-        #[cfg(target_os = "macos")]
-        {
-            items.extend(scan_volume_trash());
-        }
+            #[cfg(target_os = "linux")]
+            {
+                items.extend(scan_linux_volume_trash());
+            }
 
-        #[cfg(target_os = "linux")]
-        {
-            items.extend(scan_linux_volume_trash());
-        }
-
-        Ok(items)
+            Ok(items)
+        })
+        .await
+        .map_err(|e| AppError::Io(format!("Trash scan panicked: {}", e)))?
     }
 }
 
