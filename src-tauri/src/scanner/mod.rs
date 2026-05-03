@@ -58,60 +58,45 @@ impl ScanOrchestrator {
         let categories = opts.categories.clone();
         let mut all_items: Vec<ScanItem> = Vec::new();
 
-        // Emit scanning events for all requested categories
-        for scanner in &self.scanners {
-            let cat = scanner.category();
-            if categories.contains(&cat) {
-                let _ = app.emit(
-                    "scan_progress",
-                    ScanProgress {
-                        category: cat.clone(),
-                        phase: ScanPhase::Scanning,
-                        items_found: 0,
-                        bytes_found: 0,
-                        current_path: None,
-                    },
-                );
-            }
-        }
-
-        // Spawn each scanner as a dedicated Tokio task so the runtime
-        // can interleave them and the event loop stays responsive
-        let mut handles: Vec<
-            tokio::task::JoinHandle<(ScanCategory, Result<Vec<ScanItem>, AppError>)>,
-        > = Vec::new();
-
+        // Run scanners one at a time so the I/O work doesn't compete
+        // and overwhelm the blocking thread pool
         for scanner in &self.scanners {
             let cat = scanner.category();
             if !categories.contains(&cat) {
                 continue;
             }
 
+            if cancelled.load(Ordering::Relaxed) {
+                break;
+            }
+
+            let _ = app.emit(
+                "scan_progress",
+                ScanProgress {
+                    category: cat.clone(),
+                    phase: ScanPhase::Scanning,
+                    items_found: 0,
+                    bytes_found: 0,
+                    current_path: None,
+                },
+            );
+
             let scanner = Arc::clone(scanner);
             let scan_opts = opts.clone();
             let platform = Arc::clone(&platform);
-            let app = app.clone();
-            let cancelled = Arc::clone(&cancelled);
+            let scan_app = app.clone();
+            let _cancelled = Arc::clone(&cancelled);
 
-            handles.push(tokio::spawn(async move {
-                if cancelled.load(Ordering::Relaxed) {
-                    return (cat, Ok(Vec::new()));
+            let result = tokio::spawn(async move {
+                if _cancelled.load(Ordering::Relaxed) {
+                    return Ok(Vec::new());
                 }
-                let result = scanner.scan(platform.as_ref(), &scan_opts, &app).await;
-                (cat, result)
-            }));
-        }
+                scanner.scan(platform.as_ref(), &scan_opts, &scan_app).await
+            })
+            .await;
 
-        for handle in handles {
-            let (cat, result) = match handle.await {
-                Ok(res) => res,
-                Err(e) => {
-                    log::error!("Scanner task panicked: {}", e);
-                    continue;
-                }
-            };
             match result {
-                Ok(items) => {
+                Ok(Ok(items)) => {
                     let bytes: u64 = items.iter().map(|i| i.size_bytes).sum();
                     let _ = app.emit(
                         "scan_progress",
@@ -125,7 +110,7 @@ impl ScanOrchestrator {
                     );
                     all_items.extend(items);
                 }
-                Err(AppError::Permission(_)) => {
+                Ok(Err(AppError::Permission(_))) => {
                     log::warn!("Permission denied scanning {:?}", cat);
                     let _ = app.emit(
                         "scan_progress",
@@ -138,8 +123,21 @@ impl ScanOrchestrator {
                         },
                     );
                 }
-                Err(e) => {
+                Ok(Err(e)) => {
                     log::error!("Scanner {:?} failed: {}", cat, e);
+                    let _ = app.emit(
+                        "scan_progress",
+                        ScanProgress {
+                            category: cat,
+                            phase: ScanPhase::Complete,
+                            items_found: 0,
+                            bytes_found: 0,
+                            current_path: None,
+                        },
+                    );
+                }
+                Err(join) => {
+                    log::error!("Scanner {:?} panicked: {}", cat, join);
                     let _ = app.emit(
                         "scan_progress",
                         ScanProgress {
