@@ -178,8 +178,8 @@ function CategoryCard({
         (showCheckbox && isSelected) ? color :
         (hasResults || isCompleted || isScanning) ? color : undefined
       }
-      interactive
-      onClick={() => setCurrentPage(pageMap[category] as never)}
+      interactive={scanStatus !== "scanning"}
+      onClick={scanStatus !== "scanning" ? () => setCurrentPage(pageMap[category] as never) : undefined}
       className={clsx(
         "group",
         isScanning && "animate-scan-pulse",
