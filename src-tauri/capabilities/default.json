@@ -7,6 +7,7 @@
     "core:default",
     "shell:allow-open",
     "dialog:allow-message",
-    "dialog:allow-ask"
+    "dialog:allow-ask",
+    "notification:default"
   ]
 }
