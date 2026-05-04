@@ -1,5 +1,5 @@
 use std::sync::{Mutex, Arc, atomic::{AtomicBool, Ordering}};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use crate::error::AppError;
 use crate::models::{ScanOptions, ScanResults, ScanItem, ScanCategory};
 use crate::scanner::ScanOrchestrator;
@@ -19,6 +19,29 @@ impl ScanState {
     }
 }
 
+/// Inner function that runs a scan — callable both from Tauri commands
+/// and from menubar handlers (which can't use `State` extractor).
+pub async fn run_scan(
+    app: &AppHandle,
+    options: &ScanOptions,
+    cancelled: Arc<AtomicBool>,
+) -> Result<ScanResults, AppError> {
+    cancelled.store(false, Ordering::SeqCst);
+
+    let orchestrator = ScanOrchestrator::new();
+    let results = orchestrator.run(options, app, cancelled).await?;
+
+    // Cache results
+    if let Ok(mut lock) = app.state::<ScanState>().results.lock() {
+        *lock = Some(results.clone());
+    }
+
+    // Signal completion
+    let _ = app.emit("scan_complete", ());
+
+    Ok(results)
+}
+
 /// Start a full scan across requested categories.
 /// Emits `scan_progress` events during scanning.
 /// Returns the full ScanResults when complete.
@@ -28,21 +51,7 @@ pub async fn start_scan(
     options: ScanOptions,
     state: State<'_, ScanState>,
 ) -> Result<ScanResults, AppError> {
-    // Reset cancellation flag
-    state.cancelled.store(false, Ordering::SeqCst);
-
-    let orchestrator = ScanOrchestrator::new();
-    let results = orchestrator.run(&options, &app, state.cancelled.clone()).await?;
-
-    // Cache results
-    if let Ok(mut lock) = state.results.lock() {
-        *lock = Some(results.clone());
-    }
-
-    // Signal completion
-    let _ = app.emit("scan_complete", ());
-
-    Ok(results)
+    run_scan(&app, &options, state.cancelled.clone()).await
 }
 
 /// Scan a single category (used by individual feature pages)
