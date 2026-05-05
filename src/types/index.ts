@@ -97,6 +97,14 @@ export interface RamCleanResult {
   message: string;
 }
 
+// ── Quick Clean ─────────────────────────────
+
+export interface QuickCleanResult {
+  itemsCleaned: number;
+  bytesCleaned: number;
+  scanResults: ScanResults;
+}
+
 export interface SystemStats {
   cpuUsagePercent: number;
   ramUsedBytes: number;
@@ -190,6 +198,7 @@ export interface DiskNode {
 // ── UI State ──────────────────────────────
 
 export type Page =
+  | "quick_clean"
   | "dashboard"
   | "system_junk"
   | "trash"
@@ -202,7 +211,7 @@ export type Page =
   | "maintenance"
   | "settings";
 
-export type ScanStatus = "idle" | "scanning" | "complete" | "error";
+export type ScanStatus = "idle" | "scanning" | "cleaning" | "complete" | "error";
 
 export interface Toast {
   id: string;

@@ -12,6 +12,7 @@ import Spinner from "@/components/ui/Spinner";
 import OnboardingOverlay from "@/components/OnboardingOverlay";
 
 // Lazy-loaded pages
+const QuickClean      = lazy(() => import("@/pages/QuickClean"));
 const Dashboard       = lazy(() => import("@/pages/Dashboard"));
 const SystemJunk      = lazy(() => import("@/pages/SystemJunk"));
 const TrashBins       = lazy(() => import("@/pages/TrashBins"));
@@ -35,6 +36,7 @@ function PageFallback() {
 function ActivePage() {
   const currentPage = useAppStore((s) => s.currentPage);
   const pages = {
+    quick_clean:     <QuickClean />,
     dashboard:       <Dashboard />,
     system_junk:     <SystemJunk />,
     trash:           <TrashBins />,

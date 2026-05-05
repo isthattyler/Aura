@@ -1,22 +1,34 @@
 use std::error::Error;
+use std::sync::Mutex;
+use std::time::Duration;
 use tauri::{
     AppHandle, Manager,
     menu::{MenuBuilder, MenuItemBuilder},
     tray::{TrayIconBuilder, TrayIconEvent},
 };
 
+struct MenuItems {
+    quick_clean: Mutex<tauri::menu::MenuItem<tauri::Wry>>,
+    clear_ram: Mutex<tauri::menu::MenuItem<tauri::Wry>>,
+}
+
 #[cfg(target_os = "macos")]
 pub fn setup_menubar(app: &tauri::App) -> Result<(), Box<dyn Error>> {
     let handle = app.handle();
 
-    let smart_scan = MenuItemBuilder::with_id("smart_scan", "Run Smart Scan").build(handle)?;
-    let free_ram   = MenuItemBuilder::with_id("free_ram", "Free Up RAM").build(handle)?;
-    let open_aura  = MenuItemBuilder::with_id("open_aura", "Open Aura").build(handle)?;
-    let quit       = MenuItemBuilder::with_id("quit", "Quit Aura").build(handle)?;
+    let quick_clean = MenuItemBuilder::with_id("quick_clean", "Quick Clean").build(handle)?;
+    let clear_ram   = MenuItemBuilder::with_id("clear_ram", "Clear RAM").build(handle)?;
+    let open_aura   = MenuItemBuilder::with_id("open_aura", "Open Aura").build(handle)?;
+    let quit        = MenuItemBuilder::with_id("quit", "Quit Aura").build(handle)?;
+
+    app.manage(MenuItems {
+        quick_clean: Mutex::new(quick_clean.clone()),
+        clear_ram: Mutex::new(clear_ram.clone()),
+    });
 
     let menu = MenuBuilder::new(handle)
-        .item(&smart_scan)
-        .item(&free_ram)
+        .item(&quick_clean)
+        .item(&clear_ram)
         .separator()
         .item(&open_aura)
         .separator()
@@ -54,36 +66,73 @@ pub fn setup_menubar(_app: &tauri::App) -> Result<(), Box<dyn Error>> {
 }
 
 #[cfg(target_os = "macos")]
+fn with_menu_item<F, R>(app: &AppHandle, id: &str, f: F) -> Option<R>
+where
+    F: FnOnce(&tauri::menu::MenuItem<tauri::Wry>) -> R,
+{
+    let items = app.state::<MenuItems>();
+    let guard = match id {
+        "quick_clean" => items.quick_clean.lock().ok()?,
+        "clear_ram" => items.clear_ram.lock().ok()?,
+        _ => return None,
+    };
+    Some(f(&*guard))
+}
+
+#[cfg(target_os = "macos")]
 fn handle_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
-    match event.id().as_ref() {
-        "smart_scan" => {
+    let id = event.id().clone();
+    let id_str = id.as_ref().to_string();
+
+    match id_str.as_str() {
+        "quick_clean" => {
             let app_clone = app.clone();
+            with_menu_item(app, "quick_clean", |item| {
+                let _ = item.set_text("Quick Clean — running…");
+                let _ = item.set_enabled(false);
+            });
+
             tauri::async_runtime::spawn(async move {
-                let scan_state = app_clone.state::<crate::commands::scan::ScanState>();
-                let cancelled = scan_state.cancelled.clone();
-                match crate::commands::scan::run_scan(&app_clone, &Default::default(), cancelled).await {
-                    Ok(results) => {
-                        let item_count = results.items.len();
-                        let size = results.total_bytes;
-                        let size_str = crate::commands::system::format_size(size);
+                match crate::commands::scan::run_quick_clean(&app_clone).await {
+                    Ok((_, items, bytes)) => {
+                        let size_str = crate::commands::system::format_size(bytes);
+                        with_menu_item(&app_clone, "quick_clean", |item| {
+                            let _ = item.set_text("Quick Clean ✓");
+                        });
                         send_notification(
                             &app_clone,
-                            "Smart Scan Complete",
-                            &format!("Found {} items ({})", item_count, size_str),
+                            "Quick Clean",
+                            &format!("Cleaned {} items ({})", items, size_str),
                         );
                     }
                     Err(e) => {
-                        log::error!("Smart scan from menubar failed: {}", e);
+                        log::error!("Quick Clean from menubar failed: {}", e);
+                        with_menu_item(&app_clone, "quick_clean", |item| {
+                            let _ = item.set_text("Quick Clean ✗");
+                        });
                     }
                 }
+                tokio::time::sleep(Duration::from_secs(2)).await;
+                with_menu_item(&app_clone, "quick_clean", |item| {
+                    let _ = item.set_text("Quick Clean");
+                    let _ = item.set_enabled(true);
+                });
             });
         }
-        "free_ram" => {
+        "clear_ram" => {
             let app_clone = app.clone();
+            with_menu_item(app, "clear_ram", |item| {
+                let _ = item.set_text("Clear RAM — freeing…");
+                let _ = item.set_enabled(false);
+            });
+
             std::thread::spawn(move || {
                 match crate::commands::maintenance::free_up_ram() {
                     Ok(result) => {
                         let size_str = crate::commands::system::format_size(result.bytes_freed);
+                        with_menu_item(&app_clone, "clear_ram", |item| {
+                            let _ = item.set_text("Clear RAM ✓");
+                        });
                         send_notification(
                             &app_clone,
                             "RAM Freed",
@@ -91,9 +140,17 @@ fn handle_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
                         );
                     }
                     Err(e) => {
-                        log::error!("Free RAM from menubar failed: {}", e);
+                        log::error!("Clear RAM from menubar failed: {}", e);
+                        with_menu_item(&app_clone, "clear_ram", |item| {
+                            let _ = item.set_text("Clear RAM ✗");
+                        });
                     }
                 }
+                std::thread::sleep(Duration::from_secs(2));
+                with_menu_item(&app_clone, "clear_ram", |item| {
+                    let _ = item.set_text("Clear RAM");
+                    let _ = item.set_enabled(true);
+                });
             });
         }
         "open_aura" => {

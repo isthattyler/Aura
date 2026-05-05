@@ -28,6 +28,7 @@ pub fn run() {
             commands::scan::get_scan_results,
             commands::scan::clear_scan_results,
             commands::scan::cancel_scan,
+            commands::scan::quick_clean,
             // Clean
             commands::clean::clean_items,
             commands::clean::empty_trash,

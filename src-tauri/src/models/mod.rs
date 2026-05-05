@@ -219,6 +219,19 @@ pub struct RamCleanResult {
 }
 
 // ─────────────────────────────────────────
+// Quick Clean
+// ─────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QuickCleanResult {
+    pub items_cleaned: usize,
+    pub bytes_cleaned: u64,
+    /// Pre-clean scan results for display
+    pub scan_results: ScanResults,
+}
+
+// ─────────────────────────────────────────
 // Disk
 // ─────────────────────────────────────────
 

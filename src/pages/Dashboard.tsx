@@ -3,7 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { useState, useRef } from "react";
 import {
   Zap, FileX, Trash2, Files, Copy, AppWindow,
-  Rocket, ShieldOff, Wrench, ChevronRight, Square,
+  Rocket, ShieldOff, Wrench, ChevronRight, Square, RefreshCw,
 } from "lucide-react";
 import { useAppStore } from "@/store";
 import {
@@ -29,6 +29,8 @@ const ALL_CATEGORIES: ScanCategory[] = [
   "system_junk", "trash", "large_files", "duplicates",
   "privacy", "apps", "startup", "maintenance",
 ];
+
+
 
 // ─────────────────────────────────────────
 // Scan Ring
@@ -57,18 +59,18 @@ function ScanRing({
   return (
     <div className="flex flex-col items-center gap-6">
       <div className="relative">
-        {status === "scanning" && (
+        {(status === "scanning" || status === "cleaning") && (
           <div
             className="absolute inset-0 rounded-full animate-pulse-slow"
-            style={{ boxShadow: "0 0 40px rgba(0,212,170,0.2)" }}
+            style={{ boxShadow: status === "cleaning" ? "0 0 40px rgba(250,204,21,0.25)" : "0 0 40px rgba(0,212,170,0.2)" }}
           />
         )}
 
         <ProgressRing
-          value={status === "scanning" ? progressPct : hasResults ? 100 : 0}
+          value={status === "scanning" ? progressPct : status === "cleaning" ? 100 : hasResults ? 100 : 0}
           size={180}
           strokeWidth={7}
-          glow={hasResults !== false}
+          glow={hasResults !== false || status === "cleaning"}
         >
           <div className="flex flex-col items-center">
             {status === "idle" && (
@@ -86,6 +88,12 @@ function ScanRing({
                 <span className="text-[10px] text-text-muted font-mono mt-0.5">
                   {formatBytes(accumulatedBytes)} found
                 </span>
+              </>
+            )}
+            {status === "cleaning" && (
+              <>
+                <RefreshCw size={22} className="text-warning animate-spin mb-1" strokeWidth={1.5} />
+                <span className="text-[11px] text-warning font-mono">Cleaning…</span>
               </>
             )}
             {status === "complete" && (
@@ -112,6 +120,16 @@ function ScanRing({
           className="w-44 bg-warning/10 text-warning border border-warning/20 hover:bg-warning/20"
         >
           Stop
+        </Button>
+      ) : status === "cleaning" ? (
+        <Button
+          variant="secondary"
+          size="lg"
+          icon={RefreshCw}
+          disabled
+          className="w-44 opacity-60 cursor-not-allowed"
+        >
+          Cleaning…
         </Button>
       ) : (
         <Button

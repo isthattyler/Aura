@@ -5,6 +5,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import clsx from "clsx";
 
 const PAGE_TITLES: Record<Page, string> = {
+  quick_clean: "Quick Clean",
   dashboard: "Smart Scan",
   system_junk: categoryLabel("system_junk"),
   trash: categoryLabel("trash"),

@@ -1,5 +1,5 @@
 import {
-  Zap,
+  Zap, Sparkles,
   Trash2,
   FileX,
   Files,
@@ -31,7 +31,10 @@ interface NavItem {
 const NAV_SECTIONS: { heading: string; items: NavItem[] }[] = [
   {
     heading: "",
-    items: [{ page: "dashboard", label: "Smart Scan", icon: Zap, color: "#00D4AA" }],
+    items: [
+      { page: "quick_clean", label: "Quick Clean", icon: Sparkles, color: "#F59E0B" },
+      { page: "dashboard", label: "Smart Scan", icon: Zap, color: "#00D4AA" },
+    ],
   },
   {
     heading: "Cleaner",

@@ -1,9 +1,27 @@
 use std::path::PathBuf;
 use tauri::{AppHandle, Emitter, State};
 use crate::error::AppError;
-use crate::models::CleanResult;
+use crate::models::{CleanResult, ScanResults};
 use crate::cleaner::FileCleaner;
 use super::scan::ScanState;
+
+/// Resolve item IDs to filesystem paths using scan results.
+pub(crate) fn resolve_paths(results: &ScanResults, item_ids: &[String]) -> Vec<PathBuf> {
+    results
+        .items
+        .iter()
+        .filter(|item| item_ids.contains(&item.id))
+        .map(|item| {
+            if item.path.starts_with("~/") {
+                dirs::home_dir()
+                    .map(|h| h.join(&item.path[2..]))
+                    .unwrap_or_else(|| PathBuf::from(&item.path))
+            } else {
+                PathBuf::from(&item.path)
+            }
+        })
+        .collect()
+}
 
 /// Clean a list of items by their IDs (from the scan results cache).
 #[tauri::command]
@@ -13,25 +31,10 @@ pub async fn clean_items(
     permanent: bool,
     state: State<'_, ScanState>,
 ) -> Result<CleanResult, AppError> {
-    // Resolve item IDs to paths
     let paths: Vec<PathBuf> = {
         let lock = state.results.lock().map_err(|_| AppError::Io("State lock poisoned".into()))?;
         let results = lock.as_ref().ok_or_else(|| AppError::NotFound("No scan results available".into()))?;
-        results
-            .items
-            .iter()
-            .filter(|item| item_ids.contains(&item.id))
-            .map(|item| {
-                // Expand ~ back to actual home path
-                if item.path.starts_with("~/") {
-                    dirs::home_dir()
-                        .map(|h| h.join(&item.path[2..]))
-                        .unwrap_or_else(|| PathBuf::from(&item.path))
-                } else {
-                    PathBuf::from(&item.path)
-                }
-            })
-            .collect()
+        resolve_paths(results, &item_ids)
     };
 
     if paths.is_empty() {
