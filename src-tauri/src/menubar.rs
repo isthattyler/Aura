@@ -58,7 +58,7 @@ fn handle_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
     match event.id().as_ref() {
         "smart_scan" => {
             let app_clone = app.clone();
-            tokio::spawn(async move {
+            tauri::async_runtime::spawn(async move {
                 let scan_state = app_clone.state::<crate::commands::scan::ScanState>();
                 let cancelled = scan_state.cancelled.clone();
                 match crate::commands::scan::run_scan(&app_clone, &Default::default(), cancelled).await {
@@ -80,7 +80,7 @@ fn handle_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
         }
         "free_ram" => {
             let app_clone = app.clone();
-            tokio::spawn(async move {
+            std::thread::spawn(move || {
                 match crate::commands::maintenance::free_up_ram() {
                     Ok(result) => {
                         let size_str = crate::commands::system::format_size(result.bytes_freed);

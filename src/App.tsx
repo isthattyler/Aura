@@ -2,7 +2,7 @@ import { useEffect, useCallback, lazy, Suspense } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useAppStore } from "@/store";
-import { type SystemStats, type ScanProgress } from "@/types";
+import { type SystemStats, type ScanProgress, type ScanResults } from "@/types";
 import Sidebar from "@/components/layout/Sidebar";
 import TopBar from "@/components/layout/TopBar";
 import ToastContainer from "@/components/ui/Toast";
@@ -59,7 +59,7 @@ function ActivePage() {
 }
 
 export default function App() {
-  const { setSystemStats, setScanProgress, setScanStatus, setPlatform, setCurrentPage, addToast, settings } =
+  const { setSystemStats, setScanProgress, setScanStatus, setScanResults, setPlatform, setCurrentPage, addToast, settings } =
     useAppStore();
 
   // ── Apply theme ──────────────────────────────────────────────────────────
@@ -116,9 +116,17 @@ export default function App() {
       setScanProgress(event.payload);
     });
 
-    const unlistenComplete = listen("scan_complete", () => {
+    const unlistenComplete = listen("scan_complete", async () => {
       setScanStatus("complete");
       setScanProgress(null);
+      try {
+        const results = await invoke<ScanResults | null>("get_scan_results");
+        if (results) {
+          setScanResults(results);
+        }
+      } catch {
+        // ignore — results stay null
+      }
       addToast({ type: "success", title: "Scan complete", description: "Review your results below." });
     });
 
@@ -133,7 +141,7 @@ export default function App() {
       void unlistenComplete.then((fn) => fn());
       void unlistenError.then((fn) => fn());
     };
-  }, [setScanProgress, setScanStatus, addToast]);
+  }, [setScanProgress, setScanStatus, setScanResults, addToast]);
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-bg-base">
