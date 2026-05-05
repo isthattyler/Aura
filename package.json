@@ -1,5 +1,6 @@
 {
   "name": "aura",
+  "type": "module",
   "version": "0.1.0",
   "private": true,
   "description": "Aura — Cross-platform system cleaner built with Rust + Tauri",
